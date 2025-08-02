@@ -1,13 +1,11 @@
 logs
 test*
-test
+**/__pycache__/
+*.cache/
+
+
 huggingface_config.json
+custom_WSI_pipeline/models/**/*.pth
+custom_WSI_pipeline/models/**/*.bin
 
-
-custom_WSI_pipeline/models/**.pth
-
-custom_WSI_pipeline/models/**.bin
-
-
-*pycache
-*.cache
+download_pro*.json

@@ -40,7 +40,7 @@ def main(args):
     norm=True
     if norm:
         print("\nInitialising Macenko normaliser...")
-        target = cv2.imread('WSI_pipeline/normalization_template.jpg') #TODO: make scaleable with path
+        target = cv2.imread('custom_WSI_pipeline/normalization_template.jpg') #TODO: make scaleable with path
         target = cv2.cvtColor(target, cv2.COLOR_BGR2RGB)
 
         normalizer = stainNorm_Macenko.Normalizer()

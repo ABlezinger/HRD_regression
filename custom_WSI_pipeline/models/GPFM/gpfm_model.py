@@ -24,7 +24,7 @@ def get_gpfm() -> nn.Module:
         )
     model = vit_large(**vit_kwargs)
     
-    ckpt = torch.load('custom_WSI_pipeline/models/GPFM/GPFM.pth', map_location=torch.device('cpu'))['teacher']
+    ckpt = torch.load('custom_WSI_pipeline/models/GPFM/GPFM.pth', map_location=torch.device('cpu'), weights_only=True)['teacher']
     # rename keys
     new_ckpt = {}
     for k, v in ckpt.items():

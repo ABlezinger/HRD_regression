@@ -86,8 +86,6 @@ def train(
 
 
     def weighting_continuous_values(labels) -> torch.FloatTensor:
-        
-
         edges = np.histogram_bin_edges(labels, bins='auto')
         bin_index_per_label = np.array([get_bin_idx(label, edges) for label in labels])
         # calculate empirical (original) label distribution: [Nb,]

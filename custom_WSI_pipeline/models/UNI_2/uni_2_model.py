@@ -33,7 +33,8 @@ def get_uni2_model() -> torch.nn.Module:
     model = timm.create_model(
         pretrained=False, **timm_kwargs
     )
-    model.load_state_dict(torch.load(os.path.join(local_dir, "pytorch_model.bin"), map_location="cpu"), strict=True)
+    model.load_state_dict(torch.load(
+        os.path.join(local_dir, "pytorch_model.bin"), map_location="cpu", weights_only=True), strict=True)
     model.eval()
     
     if torch.cuda.is_available():
