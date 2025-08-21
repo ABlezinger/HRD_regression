@@ -11,7 +11,7 @@ from torch.nn.init import trunc_normal_
 
 from .layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
 
-def get_gpfm() -> nn.Module:        
+def get_gpfm_model() -> nn.Module:        
     vit_kwargs = dict(
             img_size=224,
             patch_size=14,
@@ -35,7 +35,7 @@ def get_gpfm() -> nn.Module:
     # cuda setting
     
     if torch.cuda.is_available():
-        model.cpu()
+        model.cuda()
 
     model.eval()
     return model
@@ -390,6 +390,6 @@ def vit_giant2(patch_size=16, **kwargs):
     return model
 
 if __name__ == "__main__":
-    model = get_gpfm()
+    model = get_gpfm_model()
     print("GPFM model loaded successfully.")
     # You can now use the model for inference or further processing.

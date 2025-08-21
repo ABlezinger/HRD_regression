@@ -1,0 +1,47 @@
+{
+    "RetCCL": {
+        "macs": 4098252288,
+        "params": 23508032,
+        "Inference time per image": 0.002809286117553711,
+        "embed_dim": [
+            1,
+            2048
+        ]
+    },
+    "GPFM": {
+        "macs": 81043825664,
+        "params": 303228928,
+        "Inference time per image": 0.0009255409240722656,
+        "embed_dim": [
+            1,
+            1024
+        ]
+    },
+    "UNI": {
+        "macs": 59665716224,
+        "params": 303350784,
+        "Inference time per image": 0.0026199817657470703,
+        "embed_dim": [
+            1,
+            1024
+        ]
+    },
+    "UNI-2": {
+        "macs": 180358215168,
+        "params": 681394176,
+        "Inference time per image": 0.001440286636352539,
+        "embed_dim": [
+            1,
+            1536
+        ]
+    },
+    "CONCH": {
+        "macs": 17007380996,
+        "params": 395232769,
+        "Inference time per image": 0.00131988525390625,
+        "embed_dim": [
+            1,
+            512
+        ]
+    }
+}

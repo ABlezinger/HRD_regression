@@ -23,6 +23,7 @@ def get_RetCCL_model() -> nn.Module:
     model.load_state_dict(pretext_model, strict=True)
 
     if torch.cuda.is_available():
-        model=model.cuda()
+        model.cuda()
+    model.eval()
         
     return model

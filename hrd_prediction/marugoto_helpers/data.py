@@ -172,6 +172,8 @@ def get_patient_df(
 
     Args:
         patient_df (pd.DataFrame): DataFrame containing patient IDs and feature files.
+        data_path (str): Path to the directory containing the feature files.
+        feature_extractor (str): Name of the feature extractor used to generate the features.
 
     Returns:
         pd.DataFrame: DataFrame with patient IDs, target values, and feature files as list.

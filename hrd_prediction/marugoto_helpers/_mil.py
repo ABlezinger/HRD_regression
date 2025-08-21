@@ -31,6 +31,7 @@ from .utils import get_lds_kernel_window
 
 # from marugoto.data import FunctionTransformer
 from sklearn.preprocessing import FunctionTransformer
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 from .loss import mean_squared_error
 #from sklearn.metrics.pairwise import manhattan_distances
@@ -42,13 +43,13 @@ from .data import make_dataset
 from .model import MILModel
 
 
-__all__ = ['train', 'deploy']
+__all__ = ['train_marugoto', 'deploy']
 
 
 T = TypeVar('T')
 
 #CHANGED
-def train(
+def train_marugoto(
     *,
     bags: Sequence[Iterable[Path]],
     targets: np.ndarray,
@@ -204,13 +205,57 @@ def train(
 
     return learn
 
+def train_marugoto_crossval(
+    *, 
+    fold_path, 
+    fold_df, 
+    target_label,
+    cat_labels,
+    cont_labels,
+    binary_label, #target_enc,fold_weights_train 
+    n_epochs=25
+):
+    """Helper function for training the folds."""
+    assert fold_df.patient_id.nunique() == len(fold_df)
+    fold_path.mkdir(exist_ok=True, parents=True)
+
+
+    if binary_label is not None:
+        train_patients, valid_patients = train_test_split(
+            fold_df.patient_id, stratify=fold_df[binary_label], random_state=1337)
+    else:
+        train_patients, valid_patients = train_test_split(
+            fold_df.patient_id, random_state=1337)
+        
+    train_df = fold_df[fold_df.patient_id.isin(train_patients)]
+    valid_df = fold_df[fold_df.patient_id.isin(valid_patients)]
+    train_df.drop(columns='feature_files').to_csv(fold_path/'train.csv', index=False)
+    valid_df.drop(columns='feature_files').to_csv(fold_path/'valid.csv', index=False)
+
+
+    learn = train_marugoto(
+        bags=fold_df.feature_files.values,
+        targets=(fold_df[target_label].values).reshape(-1,1), #(373,1) enters here, i.e. ALL target data
+        # add_features=add_features,
+        valid_idxs=fold_df.patient_id.isin(valid_patients),
+        path=fold_path,
+        n_epoch=n_epochs 
+    )
+    
+    learn.target_label = target_label
+    learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
+
+    return learn
 
 def deploy(
-    test_df: pd.DataFrame, learn: Learner, *,
+    test_df: pd.DataFrame, 
+    learn: Learner,
+    *,
     target_label: Optional[str] = None,
-    cat_labels: Optional[Sequence[str]] = None, cont_labels: Optional[Sequence[str]] = None,
+    cat_labels: Optional[Sequence[str]] = None, 
+    cont_labels: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
-    assert test_df.PATIENT.nunique() == len(test_df), 'duplicate patients!'
+    assert test_df.patient_id.nunique() == len(test_df), 'duplicate patients!'
 
 
     if target_label is None: target_label = learn.target_label
@@ -228,7 +273,7 @@ def deploy(
 
     #CHANGED
     test_ds = make_dataset(
-        bags=test_df.slide_path.values,
+        bags=test_df.feature_files.values,
         #weights=weights.reshape(-1,1),
         targets=(((test_df[target_label].values)).reshape(-1,1), np.ones((test_df[target_label].values).shape).reshape(-1,1)), #(target_enc, )
         add_features=add_features,
@@ -244,7 +289,7 @@ def deploy(
     # make into DF w/ ground truth
     #CHANGED
     patient_preds_df = pd.DataFrame.from_dict({
-        'PATIENT': test_df.PATIENT.values,
+        'patient_id': test_df.patient_id.values,
         target_label: test_df[target_label].values})
 
     patient_preds_df['loss'] = F.mse_loss(
@@ -254,7 +299,7 @@ def deploy(
     patient_preds_df['pred'] = patient_preds
 
     patient_preds_df = patient_preds_df[[
-        'PATIENT',
+        'patient_id',
         target_label,
         'pred',
         'loss']]

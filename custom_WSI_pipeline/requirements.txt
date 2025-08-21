@@ -1,0 +1,9 @@
+torchprofile
+openslide-python
+numba 
+#TODO conch files 
+# rest der reqiurements
+
+# spams 
+# SPAM only if npy files dont exist, then create a python 3.8 environemnt and run the pipline 
+# without loading the CONCH code since CONCH requires python 3.8

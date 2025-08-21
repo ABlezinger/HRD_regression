@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Dict, Tuple
 from concurrent import futures
+import json
 
 import PIL
 from PIL import Image
@@ -18,9 +19,9 @@ import openslide
 import cv2
 
 
-import stainNorm_Macenko
-from concurrent_canny_rejection import reject_background
-from feature_extraction import extract_and_save_features
+import pipeline_utils.stainNorm_Macenko as stainNorm_Macenko
+from pipeline_utils.concurrent_canny_rejection import reject_background
+from feature_extraction import create_model, extract_features_
 
 ## Sortiert bis hier 
 
@@ -40,7 +41,7 @@ def main(args):
     norm=True
     if norm:
         print("\nInitialising Macenko normaliser...")
-        target = cv2.imread('custom_WSI_pipeline/normalization_template.jpg') #TODO: make scaleable with path
+        target = cv2.imread('custom_WSI_pipeline/pipeline_utils/normalization_template.jpg') #TODO: make scaleable with path
         target = cv2.cvtColor(target, cv2.COLOR_BGR2RGB)
 
         normalizer = stainNorm_Macenko.Normalizer()
@@ -61,109 +62,133 @@ def main(args):
     
     args.output_dir.mkdir(parents=True, exist_ok=True)
     
-    for slide_url in (progress := tqdm(svs_dir, leave=False)):
+    model = create_model(args.model)
+    print(f"Model {args.model} created successfully.")
+    
+    failed_slides = []
+    
+    for slide_url in (progress := tqdm(svs_dir, leave=False, total=len(svs_dir), file=sys.stdout)):
+        
         slide_name = Path(slide_url).stem
-        progress.set_description(slide_name)
-    
-        #create jpg and feature directories     
-        slide_jpg_dir = args.jpg_dir/slide_name
-        slide_jpg_dir.mkdir(parents=True, exist_ok=True)
-    
-        if not (os.path.exists((f'{args.output_dir}/{slide_name}.h5'))):
-            # If the slide is not already processed with the model
-            
-            #save as png to avoid information loss due to jpg compression
-            if (slide_jpg := slide_jpg_dir/'norm_slide.png').exists():
-                print("WSI has been normalized and converted into jpg, now extracting features...")
-                # If the normalised slide png already exists, load it
-                img_norm_wsi_jpg = PIL.Image.open(slide_jpg)
-                image_array = np.array(img_norm_wsi_jpg)
-                canny_patch_list = []
-                coords_list=[]
-                patch_saved=0
+        try:
+            progress.set_description(slide_name)
+        
+            #create jpg and feature directories     
+            slide_jpg_dir = args.jpg_dir/slide_name
+            slide_jpg_dir.mkdir(parents=True, exist_ok=True)
+        
+            if not (os.path.exists((f'{args.output_dir}/{slide_name}.h5'))):
+                # If the slide is not already processed with the model
                 
-                
-                coords_path = slide_jpg_dir / "coords.npy"
-                if coords_path.exists():
-                    coords_list = np.load(coords_path, allow_pickle=True)
-                    canny_patch_list = [image_array[y:y+224, x:x+224, :] for (x, y) in coords_list]
-                    patch_saved = len(canny_patch_list)
-                else:
-                    raise FileNotFoundError(f"Missing coords.npy for {slide_name}")
-                
-                print(f"Loaded {patch_saved} patches from {slide_name}")
-                
-                del img_norm_wsi_jpg, image_array  # Clean up memory
-                                         
-            else:
-                #if normalized slide png does not exist, load the slide and normalise it
-                print(f"\nLoading {slide_name}")
-                try:
-                    slide = openslide.OpenSlide(str(slide_url))
-                except Exception as e:
-                    print(f"Failed loading {slide_name}, error: {e}")
-                    continue
-
-                #measure time performance
-                start_time = time.time()
-                # load slide svs and convert to np.array
-                slide_array = load_slide(slide)
-                if slide_array is None:
-                    print(f"Skipping slide and not deleting {slide_url} due to missing MPP...")
-                    # os.remove(str(slide_url))
-                    continue
-                #save original WSI as jpg
-                (Image.fromarray(slide_array)).save(f'{slide_jpg_dir}/slide.jpg')
-
-                #remove .SVS from memory (couple GB)
-                del slide
-                
-                print("\n--- Loaded slide: %s seconds ---" % (time.time() - start_time))
-                #########################
-
-                #########################
-                #Do edge detection here and reject unnecessary tiles BEFORE normalisation
-                # hier ist patch save evtl mit drin 
-                bg_reject_array, rejected_tile_array, patch_shapes = reject_background(img = slide_array, patch_size=(224,224), step=224, outdir=args.jpg_dir, save_tiles=False)
-
-                
-                #measure time performance
-                start_time = time.time()
-                #pass raw slide_array for getting the initial concentrations, bg_reject_array for actual normalisation
-                if norm:
-                    print(f"Normalising {slide_name}...")
-                    canny_img, img_norm_wsi_jpg, canny_patch_list, coords_list = normalizer.transform(slide_array, bg_reject_array, rejected_tile_array, patch_shapes)
-                    print(f"\n--- Normalised slide {slide_name}: {(time.time() - start_time)} seconds ---")
+                #save as png to avoid information loss due to jpg compression
+                if (slide_png := slide_jpg_dir/'norm_slide.png').exists():
+                    print("WSI has been normalized and converted into jpg, now extracting features...")
+                    # If the normalised slide png already exists, load it
+                    img_norm_wsi_jpg = PIL.Image.open(slide_png)
+                    image_array = np.array(img_norm_wsi_jpg)
+                    canny_patch_list = []
+                    coords_list=[]
+                    patch_saved=0
                     
-                    # save normalised image as "norm_slide.jpg"
-                    img_norm_wsi_jpg.save(slide_jpg) #save WSI.svs -> WSI.jpg
-
+                    
+                    coords_path = slide_jpg_dir / "coords.npy"
+                    if coords_path.exists():
+                        coords_list = np.load(coords_path, allow_pickle=True)
+                        canny_patch_list = [image_array[y:y+224, x:x+224, :] for (x, y) in coords_list]
+                        patch_saved = len(canny_patch_list)
+                    else:
+                        raise FileNotFoundError(f"Missing coords.npy for {slide_name}")
+                    
+                    print(f"Loaded {patch_saved} patches from {slide_name}")
+                    
+                    del img_norm_wsi_jpg, image_array  # Clean up memory
+                                            
                 else:
-                    canny_img, canny_patch_list, coords_list = get_raw_tile_list(slide_array.shape, bg_reject_array, rejected_tile_array, patch_shapes)
+                    #if normalized slide png does not exist, load the slide and normalise it
+                    print(f"\nLoading {slide_name}")
+                    try:
+                        slide = openslide.OpenSlide(str(slide_url))
+                    except Exception as e:
+                        print(f"Failed loading {slide_name}, error: {e}")
+                        continue
 
-                print("Saving Canny background rejected image...")
-                canny_img.save(f'{slide_jpg_dir}/canny_slide.jpg')
-                np.save(slide_jpg_dir / "coords.npy", coords_list)
+                    #measure time performance
+                    start_time = time.time()
+                    # load slide svs and convert to np.array
+                    slide_array = load_slide(slide)
+                    if slide_array is None:
+                        print(f"Skipping slide and not deleting {slide_url} due to missing MPP...")
+                        # os.remove(str(slide_url))
+                        continue
+                    #save original WSI as jpg
+                    (Image.fromarray(slide_array)).save(f'{slide_jpg_dir}/slide.jpg')
+
+                    #remove .SVS from memory (couple GB)
+                    del slide
+                    
+                    print("\n--- Loaded slide: %s seconds ---" % (time.time() - start_time))
+                    #########################
+
+                    #########################
+                    #Do edge detection here and reject unnecessary tiles BEFORE normalisation
+                    # hier ist patch save evtl mit drin 
+                    bg_reject_array, rejected_tile_array, patch_shapes = reject_background(img = slide_array, patch_size=(224,224), step=224, outdir=args.jpg_dir, save_tiles=False)
+
+                    
+                    #measure time performance
+                    start_time = time.time()
+                    #pass raw slide_array for getting the initial concentrations, bg_reject_array for actual normalisation
+                    if norm:
+                        print(f"Normalising {slide_name}...")
+                        canny_img, img_norm_wsi_jpg, canny_patch_list, coords_list = normalizer.transform(slide_array, bg_reject_array, rejected_tile_array, patch_shapes)
+                        print(f"\n--- Normalised slide {slide_name}: {(time.time() - start_time)} seconds ---")
+                        
+                        # save normalised image as "norm_slide.jpg"
+                        img_norm_wsi_jpg.save(slide_png) #save WSI.svs -> WSI.jpg
+
+                    else:
+                        canny_img, canny_patch_list, coords_list = get_raw_tile_list(slide_array.shape, bg_reject_array, rejected_tile_array, patch_shapes)
+
+                    print("Saving Canny background rejected image...")
+                    canny_img.save(f'{slide_jpg_dir}/canny_slide.jpg')
+                    np.save(slide_jpg_dir / "coords.npy", coords_list)
+                    
+                    #remove original slide jpg from memory
+                    del slide_array
+
+
+                #FEATURE EXTRACTION
+                print(f"Extracting {args.model} features from {slide_name}")
+                #measure time performance
+                start_time = time.time()
                 
-                #remove original slide jpg from memory
-                del slide_array
+                extract_features_(
+                    model=model, 
+                    model_name=args.model,
+                    norm_wsi_img=np.asarray(canny_patch_list),
+                    coords=coords_list, 
+                    wsi_name=slide_name, 
+                    outdir=args.output_dir, 
+                    km_clustering=True)
+                # extract_and_save_features(norm_wsi_img=np.asarray(canny_patch_list), wsi_name=slide_name, coords=coords_list, extraction_model=args.model, outdir=args.output_dir)
+                print("\n--- Extracted features from slide: %s seconds ---" % (time.time() - start_time))
+                #########################
+                # print(f"Deleting slide {slide_name} from local folder...")
+                # os.remove(str(slide_url))
 
-
-            #FEATURE EXTRACTION
-            print(f"Extracting {args.model} features from {slide_name}")
-            #measure time performance
-            start_time = time.time()
+            else:
+                print(f"{args.model}/{slide_name}_loaded.h5 already exists. Skipping...")
+                # print(f"Deleting slide {slide_name} from local folder...")
+                # os.remove(str(slide_url))
+        except Exception as e:
+            print("\n#####################")
+            print("Error processing slide:", slide_name)
+            print("Error message:", e)
+            print("#####################\n")
+            failed_slides.append(slide_name)
+        
+        json.dump(failed_slides, open("custom_WSI_pipeline/failed_slides.json", "w"))
             
-            extract_and_save_features(norm_wsi_img=np.asarray(canny_patch_list), wsi_name=slide_name, coords=coords_list, extraction_model=args.model, outdir=args.output_dir)
-            print("\n--- Extracted features from slide: %s seconds ---" % (time.time() - start_time))
-            #########################
-            # print(f"Deleting slide {slide_name} from local folder...")
-            # os.remove(str(slide_url))
-
-        else:
-            print(f"{slide_name}_loaded.h5 already exists. Skipping...")
-            # print(f"Deleting slide {slide_name} from local folder...")
-            # os.remove(str(slide_url))
 
 
 def _load_tile(
@@ -201,7 +226,8 @@ def load_slide(slide: openslide.OpenSlide, target_mpp: float = 256/224) -> np.nd
 
         # write the loaded tiles into an image as soon as they are loaded
         im = np.zeros((*(tile_target_size*steps)[::-1], 3), dtype=np.uint8)
-        for tile_future in tqdm(futures.as_completed(future_coords), total=steps*steps, desc='Reading WSI tiles', leave=False):
+        for tile_future in futures.as_completed(future_coords):
+        # for tile_future in tqdm(futures.as_completed(future_coords), total=steps*steps, desc='Reading WSI tiles', leave=False):
             i, j = future_coords[tile_future]
             tile = tile_future.result()
             x, y = tile_target_size * (j, i)

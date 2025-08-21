@@ -16,9 +16,10 @@ from torchvision import transforms
 import h5py
 
 from models.RetCCL.RetCCL_model import get_RetCCL_model
-from models.GPFM.gpfm_model import get_gpfm
+from models.GPFM.gpfm_model import get_gpfm_model
 from models.UNI.uni_model import get_uni_model
 from models.UNI_2.uni_2_model import get_uni2_model
+from pipeline_utils.kmeans_clustering import kmeans_clustering
 
 
 
@@ -58,7 +59,7 @@ def get_mask_from_thumb(thumb, threshold: int) -> np.ndarray:
 #TODO: replace slide_tile_paths with the actual tiles which are in memory
 def extract_features_(
         *,
-        model, model_name, norm_wsi_img: np.ndarray, coords: list, wsi_name: str, outdir: Path, 
+        model: nn.Module, model_name: str, norm_wsi_img: np.ndarray, coords: list, wsi_name: str, outdir: Path, km_clustering: bool = True, 
 ) -> None:
     """Extracts features from slide tiles.
 
@@ -97,31 +98,33 @@ def extract_features_(
     del norm_wsi_img
 
     dl = torch.utils.data.DataLoader(
-        ds, batch_size=64, shuffle=False, num_workers=12, drop_last=False)
+        ds, 
+        batch_size=64 if model_name != "UNI_2" else 32,  # UNI_2 has a larger model and requires smaller batch size
+        shuffle=False,
+        num_workers=12,
+        drop_last=False)
 
     model = model.eval()
 
     feats = []
-    for batch in tqdm(dl, leave=False):
+    # for batch in tqdm(dl, leave=False):
+    for batch in dl:
         feats.append(
                 model(batch.type_as(next(model.parameters()))).half().cpu().detach())
+        
+    if km_clustering:
+        labels = kmeans_clustering(np.concatenate(feats), n_clusters=50)
 
     with h5py.File(f'{outdir}/{wsi_name}.h5', 'w') as f:
         f['coords'] = coords
         f['feats'] = torch.concat(feats).cpu().numpy()
+        if km_clustering:
+            f['cluster_labels'] = labels
         f.attrs['extractor'] = extractor_string
         
     print("saved features to", f'{outdir}/{wsi_name}.h5')
 
-def extract_and_save_features(norm_wsi_img: np.ndarray, wsi_name: str, coords: list, extraction_model: str, outdir: Path, **kwargs):
-    """Extracts features from slide tiles.
-    Args:
-        checkpoint_path:  Path to the model checkpoint file.  Can be downloaded
-            from <https://drive.google.com/drive/folders/1AhstAFVqtTqxeS9WlBpU41BV08LYFUnL>.
-    """
-    
-    # create model 
-    
+def create_model(extraction_model: str) -> nn.Module:
     if extraction_model == "UNI":
         model = get_uni_model()
     elif extraction_model == "UNI_2":
@@ -129,8 +132,11 @@ def extract_and_save_features(norm_wsi_img: np.ndarray, wsi_name: str, coords: l
     elif extraction_model == "RetCCL":
         model = get_RetCCL_model()
     elif extraction_model == "GPFM":
-        model = get_gpfm()
+        model = get_gpfm_model()
+    elif extraction_model == "CONCH":
+        from models.CONCH.conch_model import get_conch_model
+        model = get_conch_model()
     else:
         raise ValueError(f"Unknown model: {extraction_model}")
     
-    return extract_features_(norm_wsi_img=norm_wsi_img, wsi_name=wsi_name, coords=coords, model=model, outdir=outdir, model_name=extraction_model, **kwargs)
+    return model

@@ -39,6 +39,8 @@ def get_uni2_model() -> torch.nn.Module:
     
     if torch.cuda.is_available():
         model = model.cuda()
+        
+    model.eval()
     
     return model
 

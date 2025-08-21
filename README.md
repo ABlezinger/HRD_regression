@@ -25,7 +25,7 @@ for uni models application form on github needs to be submitted
 
 ## Marugoto WSI Pipeline:
 
-The codebase for the WSI pipeline referenced in this paper by KatherLab (https://www.nature.com/articles/s41467-024-45589-1)  (available under https://github.com/KatherLab/end2end-WSI-preprocessing/releases/tag/v1.0.0-preprocessing) has been adapted for extracting features with different extraction models.
+The codebase for the WSI pipeline referenced in this paper by KatherLab (https://www.nature.com/articles/s41467-024-45589-1)  (available under https://github.com/KatherLab/end2end-WSI-preprocessing/releases/tag/v1.0.0-preprocessing) has been adapted for extracting features with different extraction models and to perform k-Means clustering of the features.
 Additionally the code for loading each model has been copied and slightly adapted from each respective model github/hugginface documentation.
 
 
