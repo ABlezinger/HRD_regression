@@ -57,7 +57,9 @@ def main(args):
     xlim = (0, img_width)
     ylim = (0, img_height)
 
-    fig, axes = plt.subplots(1, n_models + 1, figsize=(5 * (n_models + 1), 5))
+    fig, axes = plt.subplots(2, int((n_models + 1)/2), figsize=(3 * (n_models + 1), 10))
+    
+    axes = axes.flatten()
     # Plot original image
     axes[0].imshow(png_image)
     axes[0].set_title("Original Image")
