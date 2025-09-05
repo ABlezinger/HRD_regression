@@ -81,6 +81,6 @@ class Transformer_gpt_random_attn_topk(BaseAggregator):
         return self.mlp_head(self.norm(x))
 
 
-transformer = Transformer_gpt_random_attn_topk(num_classes=2)
-transformer(torch.rand(1, 1, 2048))
+# transformer = Transformer_gpt_random_attn_topk(num_classes=2)
+# transformer(torch.rand(1, 1, 2048))
 

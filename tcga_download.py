@@ -6,7 +6,7 @@ from tqdm import tqdm
 import os 
 
 # Download Params
-DATASET_PATH = "/data/datasets/images/TCGA"
+DATASET_PATH = "/data/datasets/images/CPTAC"
 data_endpt = "https://api.gdc.cancer.gov/data"
 
 BATCH_SIZE = 1
@@ -17,7 +17,10 @@ print(f"Writing images to {DATASET_PATH}")
 # loading progess files 
 files = json.load(open(f"datafiles/TCGA_complete.json"))
 
-uuids = [case["file_id"] for case in files if case["cases"][0]["project"]["project_id"] in ["TCGA-LUAD", "TCGA-UCEC"]]
+cases = [case for case in files if case["cases"][0]["project"]["project_id"] in ["TCGA-BRCA"]]
+# uuids = [case["file_id"] for case in files if case["cases"][0]["project"]["project_id"] in ["TCGA-BRCA"]]
+brca_list = os.listdir(f"{DATASET_PATH}/BRCA")
+uuids = [case["file_id"] for case in cases if f"{case['file_name']}" not in brca_list]
 
 if os.path.exists("datafiles/failed_uuids_test.json"):
     failed_uuids = json.load(open("datafiles/failed_uuids_test.json"))
@@ -25,10 +28,10 @@ else:
     failed_uuids = []
 
 
-if os.path.exists("datafiles/download_progress_test.json"):
-    download_progress = json.load(open("datafiles/download_progress_test.json"))
-else:
-    download_progress = {"last_successful": 0}
+# if os.path.exists("datafiles/download_progress.json"):
+#     download_progress = json.load(open("datafiles/download_progress.json"))
+# else:
+download_progress = {"last_successful": 0}
 
 print(f"Number of files: {len(uuids)}")
 batches = len(uuids) // BATCH_SIZE + 1
@@ -60,12 +63,18 @@ for i in tqdm(range(0, len(uuids), BATCH_SIZE), total=batches):
                                     }, timeout=600)
     
     #handle response
-    response_head_cd = response.headers["Content-Disposition"]
-
+    try:
+        response_head_cd = response.headers["Content-Disposition"]
+    
+    except KeyError as e:
+        print(f"batch {batch} failed: KeyError")
+        failed_uuids += params["ids"]
+        batch += 1
+        continue
     file_name = re.findall("filename=(.+)", response_head_cd)[0]
 
     
-    filepath = f"{DATASET_PATH}/WSIs/{file_name}"
+    filepath = f"{DATASET_PATH}/BRCA/{file_name}"
 
     with open(filepath, "wb") as output_file:
         output_file.write(response.content)
@@ -83,9 +92,9 @@ for i in tqdm(range(0, len(uuids), BATCH_SIZE), total=batches):
     #     file.close()
     #     print(f"Batch {batch} worked")
     
-    download_progress["last_successful"] = batch
-    json.dump(download_progress, open("datafiles/download_progress_test.json", "w"))
-    batch += 1
+    # download_progress["last_successful"] = batch
+    # json.dump(download_progress, open("datafiles/download_progress.json", "w"))
+    # batch += 1
     
 json.dump(failed_uuids, open("datafiles/failed_uuids_test.json", "w"))
 print(f"downloaded {len(uuids) - len(failed_uuids)} out of {len(uuids)} ({((len(uuids) - len(failed_uuids))/len(uuids))*100}%) len files that failed to download.")

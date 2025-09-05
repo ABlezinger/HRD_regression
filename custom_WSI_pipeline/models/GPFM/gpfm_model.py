@@ -33,6 +33,7 @@ def get_gpfm_model() -> nn.Module:
             new_ckpt[k] = v
 
     # cuda setting
+    msg = model.load_state_dict(new_ckpt)
     
     if torch.cuda.is_available():
         model.cuda()

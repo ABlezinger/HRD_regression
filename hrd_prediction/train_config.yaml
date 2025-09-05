@@ -28,12 +28,14 @@ cross_val_folds: 5
 
 
 #marugoto options
+marugoto_config:
+  
 
   
 
 # SuRe Transformer options
-model:  <Transformer/TransMIL/AttentionMIL/Transformer_gpt_random/Transformer_gpt_random_4_quantile...>
-model_config:
+sure_model:  <Transformer/TransMIL/AttentionMIL/Transformer_gpt_random/Transformer_gpt_random_4_quantile...>
+sure_model_config:
   depth: 6
   heads: 6
   dim_head: 64

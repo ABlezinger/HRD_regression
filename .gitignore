@@ -12,3 +12,6 @@ download_pro*.json
 CPTAC*
 
 debugging
+
+hrd_prediction/results
+visualization/**.jpg

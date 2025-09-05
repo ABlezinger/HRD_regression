@@ -1,18 +1,21 @@
 #!/bin/bash
 
-#SBATCH --job-name=CONCH_extractFeatures
-#SBATCH --output=./logs/%j-%x-log.txt
-#SBATCH --error=./logs/%j-%x-error.txt
+#SBATCH --job-name=RetCCL_extractFeatures
+#SBATCH --output=./logs/extraction/%j-%x-log.txt
+#SBATCH --error=./logs/extraction/%j-%x-error.txt
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=64
-#SBATCH --gpus=a100:1
+#SBATCH --gpus=1
 #SBATCH --chdir=/home/alexander.blezinger/HRD_regression
+#SBATCH --partition=ampere
+#SBATCH --time=90:00:00
+
 
 #parameters
-extraction_model="CONCH"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2"
-output_dir="/data/datasets/images/CPTAC/PDA/features"
-jpg_dir="/data/datasets/images/CPTAC/PDA/PNG"
-wsi_dir="/data/datasets/images/CPTAC/PDA"
+extraction_model="RetCCL"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2"
+output_dir="/data/datasets/images/CPTAC/BRCA/features"
+jpg_dir="/data/datasets/images/CPTAC/BRCA/PNG"
+wsi_dir="/data/datasets/images/CPTAC/BRCA"
 
 final_output_path="$output_dir/$extraction_model"
 

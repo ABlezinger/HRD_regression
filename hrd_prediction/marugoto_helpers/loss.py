@@ -48,7 +48,7 @@ class WeightedMSELoss(nn.Module):
         if weights is not None:
             loss = loss*weights #remove squeeze()
         loss = torch.mean(loss)
-        return loss
+        return loss.float()
 
 class WeightedL1Loss(nn.Module):
     def __init__(self, **kwargs): #weights=None,

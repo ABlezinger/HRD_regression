@@ -12,6 +12,7 @@ import json
 import PIL
 from PIL import Image
 import numpy as np
+import pandas as pd
 import torch
 from tqdm import tqdm
 
@@ -66,6 +67,7 @@ def main(args):
     print(f"Model {args.model} created successfully.")
     
     failed_slides = []
+    # svs_dir.reverse()
     
     for slide_url in (progress := tqdm(svs_dir, leave=False, total=len(svs_dir), file=sys.stdout)):
         
@@ -82,7 +84,7 @@ def main(args):
                 
                 #save as png to avoid information loss due to jpg compression
                 if (slide_png := slide_jpg_dir/'norm_slide.png').exists():
-                    print("WSI has been normalized and converted into jpg, now extracting features...")
+                    print("WSI has been normalized and converted into png, now extracting features...")
                     # If the normalised slide png already exists, load it
                     img_norm_wsi_jpg = PIL.Image.open(slide_png)
                     image_array = np.array(img_norm_wsi_jpg)
@@ -109,6 +111,8 @@ def main(args):
                     try:
                         slide = openslide.OpenSlide(str(slide_url))
                     except Exception as e:
+                        failed_slides.append(slide_name)
+
                         print(f"Failed loading {slide_name}, error: {e}")
                         continue
 
@@ -117,11 +121,12 @@ def main(args):
                     # load slide svs and convert to np.array
                     slide_array = load_slide(slide)
                     if slide_array is None:
+                        failed_slides.append(slide_name)
                         print(f"Skipping slide and not deleting {slide_url} due to missing MPP...")
                         # os.remove(str(slide_url))
                         continue
                     #save original WSI as jpg
-                    (Image.fromarray(slide_array)).save(f'{slide_jpg_dir}/slide.jpg')
+                    # (Image.fromarray(slide_array)).save(f'{slide_jpg_dir}/slide.jpg')
 
                     #remove .SVS from memory (couple GB)
                     del slide
@@ -143,14 +148,14 @@ def main(args):
                         canny_img, img_norm_wsi_jpg, canny_patch_list, coords_list = normalizer.transform(slide_array, bg_reject_array, rejected_tile_array, patch_shapes)
                         print(f"\n--- Normalised slide {slide_name}: {(time.time() - start_time)} seconds ---")
                         
-                        # save normalised image as "norm_slide.jpg"
-                        img_norm_wsi_jpg.save(slide_png) #save WSI.svs -> WSI.jpg
+                        # save normalised image as "norm_slide.png"
+                        img_norm_wsi_jpg.save(slide_png) #save WSI.svs -> WSI.png
 
                     else:
                         canny_img, canny_patch_list, coords_list = get_raw_tile_list(slide_array.shape, bg_reject_array, rejected_tile_array, patch_shapes)
 
                     print("Saving Canny background rejected image...")
-                    canny_img.save(f'{slide_jpg_dir}/canny_slide.jpg')
+                    # canny_img.save(f'{slide_jpg_dir}/canny_slide.jpg')
                     np.save(slide_jpg_dir / "coords.npy", coords_list)
                     
                     #remove original slide jpg from memory
@@ -187,8 +192,14 @@ def main(args):
             print("#####################\n")
             failed_slides.append(slide_name)
         
-        json.dump(failed_slides, open("custom_WSI_pipeline/failed_slides.json", "w"))
-            
+    if args.model == "RetCCL":
+        json.dump(failed_slides, open(f'custom_WSI_pipeline/failed_slides{str(args.wsi_dir).split("/")[-1]}.json', "w"))
+        
+        data_df = pd.read_excel("datafiles/TCGA_CPTAC_data.xlsx", index_col="feature_file")
+        for slide in failed_slides:
+            data_df.loc[f"{slide}.h5", "process_error"] = True
+        data_df.to_excel("datafiles/TCGA_CPTAC_data.xlsx")        
+                
 
 
 def _load_tile(
@@ -285,3 +296,4 @@ if __name__ == "__main__":
     
     
     main(args)
+    print("DONE!")

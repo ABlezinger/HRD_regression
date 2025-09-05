@@ -1,6 +1,8 @@
 torchprofile
 openslide-python
 numba 
+pandas
+openpyxl
 #TODO conch files 
 # rest der reqiurements
 

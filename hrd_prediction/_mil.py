@@ -19,13 +19,13 @@ import numpy as np
 
 
 #Deep imbalanced regression
-from .loss import WeightedMSELoss, WeightedL1Loss, WeightedHuberLoss
+from marugoto_helpers.loss import WeightedMSELoss, WeightedL1Loss, WeightedHuberLoss
 from fastai.optimizer import OptimWrapper
 from fastai.optimizer import SGD
 
 from collections import Counter
 from scipy.ndimage import convolve1d
-from .utils import get_lds_kernel_window
+from marugoto_helpers.utils import get_lds_kernel_window
 #######################################
 
 
@@ -33,14 +33,16 @@ from .utils import get_lds_kernel_window
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
-from .loss import mean_squared_error
+from marugoto_helpers.loss import mean_squared_error
 #from sklearn.metrics.pairwise import manhattan_distances
 
 # from sklearn.neural_network import MLPRegressor #just to test a simpler model
 # from fastai.vision.all import * #same as avive
 
-from .data import make_dataset
-from .model import MILModel
+from marugoto_helpers.data import make_whole_slide_dataset
+from suRe_helpers.data import get_clustered_samples, make_clustered_dataset
+# from suRe_helpers.data import make_image_level_dataset
+from marugoto_helpers.model import MILModel
 
 
 __all__ = ['train_marugoto', 'deploy']
@@ -55,9 +57,12 @@ def train_marugoto(
     targets: np.ndarray,
     add_features: Iterable[Tuple[FunctionTransformer, Sequence[Any]]] = [],
     valid_idxs: np.ndarray,
+    prediction_level: str,
     n_epoch: int = 25, #32
     patience: int = 8,
     path: Optional[Path] = None,
+    sample_bag_size: Optional[int] = None,
+    sample_amount: int = 1,
 ) -> Learner:
     """Train a MLP on image features.
 
@@ -67,7 +72,6 @@ def train_marugoto(
         add_features:  An (encoder, targets) pair for each additional input.
         valid_idxs:  Indices of the datasets to use for validation.
     """
-    targs = targets
 
     def get_bin_idx(x, bins):
     #TODO: find optimal binning strategy
@@ -119,28 +123,84 @@ def train_marugoto(
 
         return weights
 
+    if prediction_level == "slide":
+        new_bags = []
+        targs = []
+        idx = []
+        
+        for i, bag_paths in enumerate(bags):
+            for bag_path in bag_paths:
+                new_bags.append([bag_path])
+                targs.append(targets[i])
+                idx.append(valid_idxs[i])
+        bags = np.array(new_bags)
+        targs = np.array(targs)
+        valid_idxs = np.array(idx)
+        print(f"Number of slides: {len(bags)}")
+        print(f"Number of validation slides: {valid_idxs.sum()}")
     # enable lds for continuous values, since high HRD_scores are rare
+    elif(prediction_level == "patient"):    
+        targs = targets
+        
+    print(type(bags))
+    print("len data before sampling: ", len(bags))
+    #create samples with cluster-size weighted sampling        
+    if sample_bag_size is not None:
+        print(valid_idxs)
+        print("Using fixed bag size: ", sample_bag_size)
+        bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
+            bags=bags, 
+            targs=targs, 
+            bag_size=sample_bag_size, 
+            num_samples=sample_amount, 
+            prediction_level=prediction_level, 
+            valid_idxs=valid_idxs)
+        print(valid_idxs)
+    
+    
     weights = weighting_continuous_values(targs).reshape(-1,1)
+    
+    print("len data after sampling: ", len(bags))
+    print("len targs: ", len(targs))
+    print("len weights: ", len(weights))
+    print("len valid_idxs: ", len(valid_idxs))
+
+    
+    if sample_bag_size is not None:
+        #create dataset with cluster-size weighted sampled bags
+        print("creating clustered datasets")
+        train_ds = make_clustered_dataset(
+            bags=bags[~valid_idxs],
+            targets= (targs[~valid_idxs], weights[~valid_idxs]),
+            sampled_idxs=sampled_indexes[~valid_idxs],
+            bag_size=sample_bag_size)
+        
+        valid_ds = make_clustered_dataset(
+            bags=bags[valid_idxs],
+            targets= (targs[valid_idxs], weights[valid_idxs]),
+            sampled_idxs=sampled_indexes[valid_idxs],
+            bag_size=sample_bag_size)
+        print("done creating ")
+
+    else:
+        #create datasets with the whole image 
+        train_ds = make_whole_slide_dataset(
+            bags=bags[~valid_idxs],
+            targets= (targs[~valid_idxs], weights[~valid_idxs]),
+            add_features=[
+                (enc, vals[~valid_idxs])
+                for enc, vals in add_features],
+            bag_size=None) #512 # NONE = use all features of the bag
 
 
-
-    train_ds = make_dataset(
-        bags=bags[~valid_idxs.values],
-        targets= (targs[~valid_idxs.values], weights[~valid_idxs.values]),
-        add_features=[
-            (enc, vals[~valid_idxs.values])
-            for enc, vals in add_features],
-        bag_size=None) #512 # NONE = use all features of the bag
-
-
-    #CHANGED
-    valid_ds = make_dataset(
-        bags=bags[valid_idxs.values],
-        targets=(targs[valid_idxs.values], weights[valid_idxs.values]),
-        add_features=[
-            (enc, vals[valid_idxs.values])
-            for enc, vals in add_features],
-        bag_size=None) #None
+        #CHANGED
+        valid_ds = make_whole_slide_dataset(
+            bags=bags[valid_idxs],
+            targets=(targs[valid_idxs], weights[valid_idxs]),
+            add_features=[
+                (enc, vals[valid_idxs])
+                for enc, vals in add_features],
+            bag_size=None) #None
 
 
     # import torch.multiprocessing
@@ -148,14 +208,15 @@ def train_marugoto(
 
     # build dataloaders
     train_dl = DataLoader(
-        train_ds, batch_size=1, shuffle=True, num_workers=1) #batch_size=64, shuffle=True drop_last=True
+        train_ds, batch_size=1, shuffle=False, num_workers=1) #batch_size=64, shuffle=True drop_last=True
     valid_dl = DataLoader(
         valid_ds, batch_size=1, shuffle=False, num_workers=1) #batch_size=1, shuffle=False , drop_last=True
 
     #Graziani et al: batch_size_bag = 1, shuffle=True for both
     batch = train_dl.one_batch()
     
-    print(f"BATCH {batch[0]}")
+    # print(f"SHAPE INPUT: {batch[0][0].shape}")
+    # print(f"BATCH {batch[0]}")
 
 
     #added extra [0] because of the new tuple structure
@@ -189,8 +250,15 @@ def train_marugoto(
     #def opt_func(params, **kwargs): return OptimWrapper(SGD(params, lr=.0001, mom=.9, wd=0.01))
 
     #mean squared error metric is 'handmade' from .loss file
-    learn = Learner(dls, model, loss_func=loss_func, lr=.0001, wd=0.01,
-                    metrics=[mean_squared_error], path=path)
+    learn = Learner(
+        dls,
+        model,
+        loss_func=loss_func,
+        lr=.0001, 
+        wd=0.01,
+        metrics=[mean_squared_error],
+        path=path,
+        )
 
 
     cbs = [
@@ -201,20 +269,25 @@ def train_marugoto(
         #TensorBoardCallback(),
         CSVLogger()]
 
-    learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs)
+    # with learn.no_bar():
+    learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
 
     return learn
 
 def train_marugoto_crossval(
     *, 
-    fold_path, 
+    fold_path,
     fold_df, 
     target_label,
     cat_labels,
     cont_labels,
     binary_label, #target_enc,fold_weights_train 
-    n_epochs=25
-):
+    prediction_level,
+    n_epochs=25,
+    sample_bag_size=None,
+    sample_amount=1,
+    ) -> Learner:
+
     """Helper function for training the folds."""
     assert fold_df.patient_id.nunique() == len(fold_df)
     fold_path.mkdir(exist_ok=True, parents=True)
@@ -235,11 +308,14 @@ def train_marugoto_crossval(
 
     learn = train_marugoto(
         bags=fold_df.feature_files.values,
-        targets=(fold_df[target_label].values).reshape(-1,1), #(373,1) enters here, i.e. ALL target data
+        targets=(fold_df[target_label].values).reshape(-1,1),
         # add_features=add_features,
-        valid_idxs=fold_df.patient_id.isin(valid_patients),
+        valid_idxs=fold_df.patient_id.isin(valid_patients).values,
         path=fold_path,
-        n_epoch=n_epochs 
+        prediction_level=prediction_level,
+        n_epoch=n_epochs,
+        sample_bag_size=sample_bag_size,
+        sample_amount=sample_amount,
     )
     
     learn.target_label = target_label
@@ -251,9 +327,11 @@ def deploy(
     test_df: pd.DataFrame, 
     learn: Learner,
     *,
+    prediction_level: str,
     target_label: Optional[str] = None,
     cat_labels: Optional[Sequence[str]] = None, 
     cont_labels: Optional[Sequence[str]] = None,
+    sample_bag_size: Optional[int] = None,
 ) -> pd.DataFrame:
     assert test_df.patient_id.nunique() == len(test_df), 'duplicate patients!'
 
@@ -270,14 +348,51 @@ def deploy(
     if cont_labels:
         cont_enc = learn.dls.dataset._datasets[-2]._datasets[1].encode
         add_features.append((cont_enc, test_df[cont_labels].values))
+        
+    if prediction_level == "slide":
+        patient_ids = []
+        bags = test_df.feature_files.values
+        targets = test_df[target_label].values
+        new_bags = []
+        targs = []
+        for i, bag_paths in enumerate(bags):
+            for bag_path in bag_paths:
+                new_bags.append([bag_path])
+                targs.append(targets[i])
+                patient_ids.append(test_df.patient_id.values[i])
+        bags = np.array(new_bags)
+        targs = np.array(targs)
+        print(f"Number of test slides: {len(bags)}")
+    elif prediction_level == "patient":
+        patient_ids = test_df.patient_id.values
+        targs = test_df[target_label].values
+        bags = test_df.feature_files.values
+        
 
-    #CHANGED
-    test_ds = make_dataset(
-        bags=test_df.feature_files.values,
-        #weights=weights.reshape(-1,1),
-        targets=(((test_df[target_label].values)).reshape(-1,1), np.ones((test_df[target_label].values).shape).reshape(-1,1)), #(target_enc, )
-        add_features=add_features,
-        bag_size=None)
+    if sample_bag_size is not None:
+        # only create one sample per bag for inference
+        targs, bags, _,  sampled_indexes = get_clustered_samples(
+            bags=bags, 
+            targs=targs, 
+            bag_size=sample_bag_size, 
+            num_samples=1, 
+            prediction_level=prediction_level)
+        
+        test_ds = make_clustered_dataset(
+            bags=bags,
+            targets=(targs, np.ones(targs.shape).reshape(-1,1)), #(target_enc, )
+            sampled_idxs=sampled_indexes,
+            bag_size=sample_bag_size)
+    else:
+    
+    
+        #CHANGED
+        test_ds = make_whole_slide_dataset(
+            bags=bags,
+            #weights=weights.reshape(-1,1),
+            targets=(targs, np.ones(targs.shape).reshape(-1,1)), #(target_enc, )
+            add_features=add_features,
+            bag_size=None)
 
     test_dl = DataLoader(
         test_ds, batch_size=1, shuffle=False, num_workers=0) #shuffle=True #drop_last=True
@@ -289,11 +404,11 @@ def deploy(
     # make into DF w/ ground truth
     #CHANGED
     patient_preds_df = pd.DataFrame.from_dict({
-        'patient_id': test_df.patient_id.values,
-        target_label: test_df[target_label].values})
+        'patient_id': patient_ids,
+        target_label: targs})
 
     patient_preds_df['loss'] = F.mse_loss(
-        patient_preds.clone().detach(), patient_targs.clone().detach(),
+        patient_preds.clone().detach().squeeze(), patient_targs.clone().detach().squeeze(),
         reduction='none')
 
     patient_preds_df['pred'] = patient_preds

@@ -9,7 +9,7 @@ import pandas as pd
 from .datasets_utils import EncodedDataset, MapDataset, FunctionTransformer
 
 
-__all__ = ['BagDataset', 'make_dataset', 'get_patient_df']
+__all__ = ['BagDataset', 'make_whole_slide_dataset', 'get_patient_df']
 
 
 @dataclass
@@ -37,9 +37,11 @@ class BagDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         # collect all the features
         feats = []
+        image_clusters = []
         for bag_file in self.bags[index]:
             with h5py.File(bag_file, 'r') as f:
                 feats.append(torch.from_numpy(f['feats'][:]))
+                image_clusters.append(torch.from_numpy(f["cluster_labels"][:]))
         feats = torch.concat(feats).float()
 
         # sample a subset, if required
@@ -50,7 +52,6 @@ class BagDataset(Dataset):
 
 
 def _to_fixed_size_bag(bag: torch.Tensor, bag_size: int = 512) -> Tuple[torch.Tensor, int]:
-    # get up to bag_size elements
     bag_idxs = torch.randperm(bag.shape[0])[:bag_size]
     bag_samples = bag[bag_idxs]
 
@@ -61,7 +62,7 @@ def _to_fixed_size_bag(bag: torch.Tensor, bag_size: int = 512) -> Tuple[torch.Te
 
 
 #CHANGED:
-def make_dataset(
+def make_whole_slide_dataset(
     
     *,
     bags: Sequence[Iterable[Path]],
@@ -69,6 +70,7 @@ def make_dataset(
     add_features: Optional[Iterable[Tuple[Any, Sequence[Any]]]] = None,
     bag_size: Optional[int] = None,
 ) -> MapDataset:
+# ) -> BagDataset:
     if add_features:
         return _make_multi_input_dataset(
             bags=bags, targets=targets, add_features=add_features, bag_size=bag_size)
@@ -85,7 +87,7 @@ def _make_basic_dataset(
     bags: Sequence[Iterable[Path]],
     targs: Tuple[Sequence[Any], Sequence[Any]],
     bag_size: Optional[int] = None,
-) -> MapDataset:
+    ) -> MapDataset:
     assert len(bags) == len(targs[0]), \
         'number of bags and ground truths does not match!'
 
@@ -165,7 +167,6 @@ def _attach_add_to_bag_and_zip_with_targ(bag, add, targ):
 def get_patient_df(
     patient_df: pd.DataFrame,
     data_path: str,
-    feature_extractor: str 
 ) -> pd.DataFrame:
     """
     Creates a DataFrame containing patient IDs, target_values, and feature-files as list.
@@ -180,18 +181,15 @@ def get_patient_df(
     """
     # reduce to one row per patient with list of slides in `df['feature_file']`
     # patient_df = df.groupby('PATIENT').first().drop(columns='slide_path')
-    df["feature_file"] = df["feature_file"].apply(
-        lambda x: Path(data_path) / feature_extractor / x)
-    patient_df = df.groupby('patient_id').first().drop(columns='feature_file')
+    patient_df["feature_file"] = patient_df["feature_file"].apply(
+        lambda x: Path(data_path) / x)
+    df = patient_df.groupby('patient_id').first().drop(columns='feature_file')
     
     # patient_slides = df.groupby('PATIENT').slide_path.apply(list)
-    patient_features = df.groupby('patient_id').feature_file.apply(list)
+    patient_features = patient_df.groupby('patient_id').feature_file.apply(list)
     
-    df = patient_df.merge(patient_features, left_on='patient_id', right_index=True).reset_index()
+    df = df.merge(patient_features, left_on='patient_id', right_index=True).reset_index()
     df = df.rename(columns={"feature_file": "feature_files"})
-    
-    add_features = []
-    
     
     return df
 
