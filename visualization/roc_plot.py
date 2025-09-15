@@ -15,7 +15,7 @@ def main(args):
     plot_auroc_values(args, auroc_values)
 
 def plot_auroc_values(args, auroc_values):
-    plot_path = Path(args.save_path)/'auroc_plots'/args.prediction_level/args.cohort
+    plot_path = Path(args.save_path)/'auroc_plots'/args.MIL_type/args.prediction_level/args.sampling/args.cohort
     plot_path.mkdir(exist_ok=True, parents=True)
     n_models = len(auroc_values)
     
@@ -36,10 +36,10 @@ def plot_auroc_values(args, auroc_values):
 
 def plot_roc_curves(args):
     
-    plot_path = Path(args.save_path)/'roc_plots'/args.prediction_level/args.cohort
+    plot_path = Path(args.save_path)/'roc_plots'/args.MIL_type/args.prediction_level/args.sampling/args.cohort
     plot_path.mkdir(exist_ok=True, parents=True)
-    model_dirs = [d for d in glob.glob(f"{args.result_path}/CAMIL_crossval/{args.prediction_level}/{args.cohort}/*") if os.path.isdir(d)]  
-    print(f"{args.result_path}/{args.prediction_level}/{args.cohort}/*") 
+    model_dirs = [d for d in glob.glob(f"{args.result_path}/{args.MIL_type}_crossval/{args.sampling}/{args.prediction_level}/{args.cohort}/*") if os.path.isdir(d)]  
+    print(f"{args.result_path}/{args.MIL_type}_crossval/{args.sampling}/{args.prediction_level}/{args.cohort}/*") 
     n_models = len(model_dirs)
     
     print(n_models)
@@ -78,11 +78,13 @@ def plot_roc_curves(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Visualize clustering results')
     parser.add_argument('--result_path', type=str, default='hrd_prediction/results', help='Path to the results directory containing model outputs')
-    parser.add_argument('--cohort', type=str, default='TCGA_LUAD', help='Name of the patient cohort to plot')
+    parser.add_argument('--sampling', type=str, default='bagsize_1200_nSamples_1', help='Cluster size based sampling config')
+    # parser.add_argument('--sampling', type=str, default='no_sampling', help='Cluster size based sampling config')
+    parser.add_argument('--cohort', type=str, default='TCGA_UCEC', help='Name of the patient cohort to plot')
     parser.add_argument('--target_label', type=str, default='HRD_sum', help='Target label to plot ROC for')
     parser.add_argument('--save_path', type=str, default='visualization', help='Path to save the plot')
-    parser.add_argument('--prediction_level', default="slide", type=str, choices=['slide', 'patient'], help='Wether to predict HRD for each slide or per patient, based on all slides of the patient.')
-    parser.add_argument('--MIL_type', type=str, default='marugoto', choices=['marugoto', 'transformer'], help='Type of MIL model used')
+    parser.add_argument('--prediction_level', default="patient", type=str, choices=['slide', 'patient'], help='Wether to predict HRD for each slide or per patient, based on all slides of the patient.')
+    parser.add_argument('--MIL_type', type=str, default='random_attn_topk', choices=["marugoto", "random_attn_topk", "random_4_quantile"], help='Type of MIL model used')
     
 
     args = parser.parse_args()

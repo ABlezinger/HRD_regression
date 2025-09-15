@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=RetCCL_extractFeatures
+#SBATCH --job-name=RetCCL_rev_extractFeatures
 #SBATCH --output=./logs/extraction/%j-%x-log.txt
 #SBATCH --error=./logs/extraction/%j-%x-error.txt
 #SBATCH --nodes=1
@@ -13,9 +13,9 @@
 
 #parameters
 extraction_model="RetCCL"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2"
-output_dir="/data/datasets/images/CPTAC/BRCA/features"
-jpg_dir="/data/datasets/images/CPTAC/BRCA/PNG"
-wsi_dir="/data/datasets/images/CPTAC/BRCA"
+output_dir="/data/datasets/images/CPTAC/LUAD/features"
+jpg_dir="/data/datasets/images/CPTAC/LUAD/PNG"
+wsi_dir="/data/datasets/images/CPTAC/LUAD"
 
 final_output_path="$output_dir/$extraction_model"
 

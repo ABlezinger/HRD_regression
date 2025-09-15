@@ -1,10 +1,10 @@
 import torch
-from models.aggregators.transformer_gpt_random_attn_topk import Transformer_gpt_random_attn_topk
-from models.aggregators.transformer_gpt_random_4_quantile import Transformer_gpt_random_4_quantile
+from .models.aggregators.transformer_gpt_random_attn_topk import Transformer_gpt_random_attn_topk
+from .models.aggregators.transformer_gpt_random_4_quantile import Transformer_gpt_random_4_quantile
 import argparse
 
 
-def get_model(args, input_dim):
+def get_suRe_emodel(model_type, input_dim, output_dim):
     
     
     # config = yaml.safe_load(open("hrd_prediction/train_config.yaml", "r"))
@@ -18,9 +18,9 @@ def get_model(args, input_dim):
     # }
     
     # if True:
-    if args.sure_type == "random_attn_tok":
+    if model_type == "random_attn_topk":
         model = Transformer_gpt_random_attn_topk(
-            num_classes=1,
+            num_classes=output_dim,
             input_dim=input_dim,
             depth=6,
             heads=6,
@@ -29,9 +29,9 @@ def get_model(args, input_dim):
             mlp_dim=384,
             dropout=0
         )
-    elif args.sure_type == "random_4_quantile":
+    elif model_type == "random_4_quantile":
         model = Transformer_gpt_random_4_quantile(
-            num_classes=1,
+            num_classes=output_dim,
             input_dim=input_dim,
             depth=6,
             heads=6,
@@ -42,7 +42,7 @@ def get_model(args, input_dim):
         )
         
 
-    print(model(torch.rand(1, 200, 2048)))
+    # print(model(torch.rand(1, 200, 2048)))
    
     return model      
     # print(model)
@@ -56,5 +56,5 @@ if __name__ == "__main__":
     
     parser.add_argument("--sure_type", type=str, default="random_4_quantile", choices=["random_attn_tok", "random_4_quantile"])
     args = parser.parse_args()
-    get_model(args, 2048)
+    get_suRe_emodel(args, 2048)
     

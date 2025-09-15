@@ -134,6 +134,8 @@ def get_clustered_samples(
             h5_file = h5py.File(file, 'r')
             feats = torch.Tensor(np.array(h5_file['feats']))
             bag_features.append(feats)
+            
+            #collect clusters for each feature_vector 
             if prediction_level == "slide":
                 bag_clusters.extend(np.array(h5_file["cluster_labels"]))
                 perform_clustering = False
@@ -151,17 +153,26 @@ def get_clustered_samples(
         
         # Cluster features on patient level and save the cluster labels in each h5 file.
         if perform_clustering:
+            print("creating initial patient clusters")
             bag_clusters = kmeans_clustering(bag_features.numpy(), n_clusters=50)
+            n = 0
             for i, file in enumerate(bag):
                 h5_file = h5py.File(file, 'r+')
                 file_length = h5_file["feats"].shape[0]
                 if "patient_cluster_labels" not in h5_file.keys():
-                    h5_file.create_dataset("patient_cluster_labels", data=bag_clusters[i*file_length:(i+1)*file_length])
+                # if "patient_cluster_labels" in h5_file:
+                #     del h5_file["patient_cluster_labels"]
+                    h5_file.create_dataset("patient_cluster_labels", data=bag_clusters[n : n+file_length])
+                n += file_length
                 h5_file.close()
+        
+        bag_clusters = np.array(bag_clusters)
         
         # sample clustersize weighted features
         unique_ids, counts = np.unique(bag_clusters, return_counts=True)
-        if len(bag_features) < bag_size:
+        
+        # if less features than bag, just sort the indexes according to cluters
+        if len(bag_features) <= bag_size:
             new_bags.append(bag)
             new_targs.append(target)
             if valid_idxs is not None:
@@ -169,31 +180,64 @@ def get_clustered_samples(
             sample_idxs.append(np.argsort(bag_clusters))
             continue
                 
+        #create samples
         for _ in range(num_samples):    
             sampled_indices = []
             for cluster_id, count in zip(unique_ids, counts):
-
-                n_cluster_instances = round(count/len(bag_clusters) * bag_size)
-                # print("count: ", count)
-                # print("bag_clusters: ", len(bag_clusters))
-                # print("C: ", n_cluster_instances)
-                # print("bag_size: ", bag_size)
+                n_cluster_instances = round((count/len(bag_clusters)) * bag_size)
                 indices = np.where(bag_clusters == cluster_id)[0]
-                # print("I : ", len(indices))
-
+                
+                # print("files: ", len(bag))
+                # print("bagsize: ", len(bag_features))
+                # print("Ind: ", len(indices))
+                # print("nc: ", n_cluster_instances)
+                # print("count: ", count)
+                # print("clustersize: ", len(bag_clusters) )
+                # print("----------------")
+                
+                
                 chosen = np.random.choice(indices, n_cluster_instances, replace=False)
 
                 sampled_indices.extend(chosen)
-            sampled_indices = np.array(sampled_indices)
+            sampled_indices = np.array(sampled_indices, dtype=int)
+            
+            if len(sampled_indices) != bag_size:
+                biggest_cluster = unique_ids[np.argmax(counts)]                
+                clus = bag_clusters[sampled_indices]
+                
+                # remove features from the biggest cluster from the sample if the sample is too big due to rounding
+                if len(sampled_indices) > bag_size:
+                    
+                    excess = len(sampled_indices) - bag_size
+                    drop_idxs = np.random.choice(np.where(clus == biggest_cluster)[0], excess, replace=False)
+                    sampled_indices = np.delete(sampled_indices, drop_idxs)
+                
+                # add features from the biggest cluster to the sample if the sample is too small due to rounding
+                if len(sampled_indices) < bag_size:
+                    needed = bag_size -len(sampled_indices)
+                    
+                    index_pool = np.where(clus == biggest_cluster)[0]
+                    
+                    add_idxs = np.random.choice(index_pool, needed, replace=False)
+                    sampled_indices = np.concatenate([sampled_indices, add_idxs])
+            
+            sampled_indices = sampled_indices[np.argsort(bag_clusters[sampled_indices])]
         
+                    
             new_bags.append(bag)
             new_targs.append(target)
             sample_idxs.append(np.array(sampled_indices))
-            # clus.append(bag_clusters[sampled_indices])
             if valid_idxs is not None:
                 new_valid_idxs.append(valid_idxs[i])
+                
+                
+    new_bags = np.array(new_bags, dtype=object)
+    new_targs = np.array(new_targs)
+    new_valid_idxs = np.array(new_valid_idxs)
+    sample_idxs = np.array(sample_idxs, dtype=object)
+    # print("LENGE: " , len(sample_idxs[0]))
         
-    return new_bags, np.array(new_targs), np.array(new_valid_idxs), sample_idxs #, np.array(clus)
+    return new_bags, new_targs, new_valid_idxs, sample_idxs  #, np.array(clus)
 
 def kmeans_clustering(features, n_clusters=50) -> np.ndarray:
     """
@@ -215,7 +259,7 @@ def kmeans_clustering(features, n_clusters=50) -> np.ndarray:
 def make_clustered_dataset(
     *,
     bags: Sequence[Iterable[Path]],
-    targs: Tuple[Sequence[Any], Sequence[Any]],
+    targets: Tuple[Sequence[Any], Sequence[Any]],
     bag_size: Optional[int] = None,
     sampled_idxs: Sequence[np.ndarray],
     ) -> MapDataset:
@@ -223,7 +267,7 @@ def make_clustered_dataset(
     ds = MapDataset(
         zip_bag_targ,
         ClusteredBagDataset(bags, bag_size=bag_size, sample_idxs=sampled_idxs),
-        targs
+        targets
     )
 
 
@@ -240,26 +284,79 @@ def zip_bag_targ(bag, targets):
     )
     
 
+def arrange_bags_for_upsamling(bags: np.ndarray, targs:np.ndarray, valid_idxs:np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """_summary_
+
+    Args:
+        bags (np.ndarray): _description_
+        targs (np.ndarray): _description_
+        valid_idxs (np.ndarray): _description_
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray, np.ndarray]: _description_
+    """
+    new_bags = []
+    new_targs = []
+    new_valid_idxs = []
+    hist, edges = np.histogram(targs, density=False)
+    
+    
+    print(hist)
+    print(edges)
+    max_val = max(hist)
+    budgets = np.full(hist.shape, max_val, dtype=int) - hist
+    print(budgets)
+    
+    
+    for bin, budget in enumerate(budgets):
+        print(bin)
+        if budget == max_val:
+            continue 
+        if bin < len(budgets) -1:
+            bag_pool = np.where((edges[bin] <= targs) & (targs < edges[bin+1]))[0]
+        else:
+            bag_pool = np.where((edges[bin] <= targs) & (targs <= edges[bin+1]))[0]
+            
+        print("P: " ,bag_pool)
+        upsampled_indices = np.random.choice(bag_pool, budget, replace=True)
+         
+        new_bags.extend(bags[upsampled_indices])
+        new_targs.extend(targs[upsampled_indices])
+        new_valid_idxs.extend(valid_idxs[upsampled_indices])
+    print(bags)
+    print(new_bags)
+    new_bags = np.concatenate(new_bags)
+    
+    
+    return new_bags, new_targs, new_valid_idxs
+
 
 
 if __name__ == "__main__":
     
-    bags = np.array([['/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-21.h5',
-                     '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-22.h5',
-                     '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-23.h5',
-                     '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-24.h5',
-                     '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-25.h5']])
-    targs = np.array([42])
+    # bags = np.array([['/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-21.h5',
+    #                  '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-22.h5',
+    #                  '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-23.h5',
+    #                  '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-24.h5',
+    #                  '/data/datasets/images/CPTAC/PDA/features/RetCCL/C3L-00017-25.h5']])
+    
+    bags = np.array([['1'], ['2'],['3'],['4'],['5'],['6'],['7'],['8'],['9'],], dtype=object)
+    valid_idxs = np.array([False,True,False,False,False,False,False,False,False])
+    targs = np.array([42, 42, 42, 1 ,2, 3,4,4,10])
     prediction_level = "patient"
-    bag_size = 200
+    bag_size = 600
     num_samples = 3
     
-    new_bags, new_targs, sample_idxs, c = get_clustered_samples(bags, targs, bag_size, num_samples, prediction_level)
-    print(new_bags)
-    print(new_targs)
-    print(sample_idxs)
-    print(c)
-                     
+    # new_bags, new_targs, sample_idxs, c = get_clustered_samples(bags, targs, bag_size, num_samples, prediction_level)
+    # print(new_bags)
+    # print(new_targs)
+    # print(sample_idxs)
+    # print(c)
+    bags, targs, valid_idxs = arrange_bags_for_upsamling(bags, targs, valid_idxs=valid_idxs)       
+    print(type(bags))
+    print(targs)
+    print(valid_idxs)
+    
     pass    
     
     

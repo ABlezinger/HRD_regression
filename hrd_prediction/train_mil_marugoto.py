@@ -89,6 +89,7 @@ def train_CAMIL_model(
     pass
 
 def train_CAMIL_model_crossval(
+    MIL_model: str,
     extraction_model: str,
     patient_data: pd.DataFrame,
     feature_path: Path,
@@ -105,11 +106,11 @@ def train_CAMIL_model_crossval(
     ):
     
     if sample_bag_size is None:
-        output_path = Path(f"hrd_prediction/results/CAMIL_crossval/no_sampling/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/CAMIL_crossval/no_sampling/{prediction_level}/{cohort}")
+        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}")
     else:
-        output_path = Path(f"hrd_prediction/results/CAMIL_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/CAMIL_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
+        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
     os.makedirs(output_path, exist_ok=True)
     info = {
         'description': f'{extraction_model} MIL cross-validation',
@@ -168,6 +169,7 @@ def train_CAMIL_model_crossval(
             learn = load_learner(fold_path/'export.pkl')
         else:         
             learn = train_marugoto_crossval(
+                MIL_model=MIL_model,
                 fold_path=fold_path, 
                 fold_df=fold_train_df,
                 target_label=target_label, #, target_enc=target_enc,

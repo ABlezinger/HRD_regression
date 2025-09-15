@@ -14,4 +14,5 @@ CPTAC*
 debugging
 
 hrd_prediction/results
-visualization/**.jpg
+visualization/auroc_plots
+visualization/roc_plots

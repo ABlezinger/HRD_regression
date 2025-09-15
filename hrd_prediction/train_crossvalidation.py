@@ -16,19 +16,19 @@ def main(args):
     
     feature_path = f"{args.dataset_path}/{dataset}/{cohort}/features/{args.extraction_model}"
     
-    if args.MIL_type == "marugoto":
-        train_CAMIL_model_crossval(
-            extraction_model=args.extraction_model,
-            patient_data=patient_data,
-            feature_path=feature_path,
-            prediction_level=args.prediction_level,
-            cohort=args.cohort,
-            target_label=args.target_label,
-            epochs=args.epochs,
-            n_splits=args.n_splits,
-            sample_bag_size=args.sample_bag_size,
-            sample_amount=args.sample_amount,
-            )
+    train_CAMIL_model_crossval(
+        MIL_model=args.MIL_model,
+        extraction_model=args.extraction_model,
+        patient_data=patient_data,
+        feature_path=feature_path,
+        prediction_level=args.prediction_level,
+        cohort=args.cohort,
+        target_label=args.target_label,
+        epochs=args.epochs,
+        n_splits=args.n_splits,
+        sample_bag_size=args.sample_bag_size,
+        sample_amount=args.sample_amount,
+        )
         
     print("DONE!")
 
@@ -37,11 +37,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CAMIL model for HRD prediction.")
     
-    parser.add_argument("--MIL_type", type=str, default="test",choices=["marugoto", "transformer", "test"])
+    parser.add_argument("--MIL_model", type=str, default="test",choices=["marugoto", "random_attn_topk", "random_4_quantile"])
     parser.add_argument("--extraction_model", type=str, required=True, 
                         choices=["UNI", "UNI_2", "RetCCL", "GPFM", "CONCH"], help="Name of the feature extraction model.")
     parser.add_argument("--cohort", type=str, required=True, 
-                        choices=["TCGA_UCEC", "TCGA_LUAD", "CPTAC_PDA"], help="Cohort to filter the data.") #TODO add more cohorts
+                        choices=["TCGA_UCEC", "TCGA_LUAD", "CPTAC_PDA", "TCGA_BRCA"], help="Cohort to filter the data.") #TODO add more cohorts
     parser.add_argument("--target_label", type=str, default="HRD_sum", 
                         choices=["HRD_sum", "HRD_Binary"], help="Target label for regression. HRD_sum for regression, HRD_Binary for classification.")
     parser.add_argument("--epochs", type=int, default=25, help="Number of training epochs.")
@@ -60,8 +60,8 @@ if __name__ == "__main__":
     
     print("----------------------------------------------------------")
     print(f"Starting model Crossvalidation Training with the following parameters:\n")
-    print(f"MIL Type:\t\t\t\t{args.MIL_type}")
-    print(f"Cohort: \t\t\t\{args.cohort}")
+    print(f"MIL Model:\t\t\t\t\t{args.MIL_model}")
+    print(f"Cohort: \t\t\t\t\t{args.cohort}")
     print(f"Extraction Model: \t\t\t{args.extraction_model}")
     print(f"Target Label: \t\t\t\t{args.target_label}")
     print(f"Prediction Level: \t\t\t{args.prediction_level}")

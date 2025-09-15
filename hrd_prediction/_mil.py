@@ -40,7 +40,8 @@ from marugoto_helpers.loss import mean_squared_error
 # from fastai.vision.all import * #same as avive
 
 from marugoto_helpers.data import make_whole_slide_dataset
-from suRe_helpers.data import get_clustered_samples, make_clustered_dataset
+from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling
+from suRe_helpers.sure_model import get_suRe_emodel
 # from suRe_helpers.data import make_image_level_dataset
 from marugoto_helpers.model import MILModel
 
@@ -53,6 +54,7 @@ T = TypeVar('T')
 #CHANGED
 def train_marugoto(
     *,
+    MIL_model: str,
     bags: Sequence[Iterable[Path]],
     targets: np.ndarray,
     add_features: Iterable[Tuple[FunctionTransformer, Sequence[Any]]] = [],
@@ -63,6 +65,7 @@ def train_marugoto(
     path: Optional[Path] = None,
     sample_bag_size: Optional[int] = None,
     sample_amount: int = 1,
+    cluster_based_upsampling = False
 ) -> Learner:
     """Train a MLP on image features.
 
@@ -122,7 +125,11 @@ def train_marugoto(
         weights = torch.FloatTensor([np.float32(1 / x) for x in eff_num_per_label])
 
         return weights
+    
+    
+    ### arrange Data according the configuration 
 
+    # for slide level predicitons each bag contains only features from one file; targets and indexes have to be appended multiple times
     if prediction_level == "slide":
         new_bags = []
         targs = []
@@ -133,21 +140,21 @@ def train_marugoto(
                 new_bags.append([bag_path])
                 targs.append(targets[i])
                 idx.append(valid_idxs[i])
-        bags = np.array(new_bags)
+        bags = np.array(new_bags, dtype=object)
         targs = np.array(targs)
         valid_idxs = np.array(idx)
-        print(f"Number of slides: {len(bags)}")
-        print(f"Number of validation slides: {valid_idxs.sum()}")
-    # enable lds for continuous values, since high HRD_scores are rare
+
+    # for patient predictions each bag contains features from mutliple slides
     elif(prediction_level == "patient"):    
         targs = targets
+
+    if cluster_based_upsampling:
+        arrange_bags_for_upsamling(bags, targs, valid_idxs)
         
-    print(type(bags))
-    print("len data before sampling: ", len(bags))
+        
     #create samples with cluster-size weighted sampling        
     if sample_bag_size is not None:
-        print(valid_idxs)
-        print("Using fixed bag size: ", sample_bag_size)
+        print("Creating clustered samples with fixed bag size: ", sample_bag_size)
         bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
             bags=bags, 
             targs=targs, 
@@ -155,20 +162,16 @@ def train_marugoto(
             num_samples=sample_amount, 
             prediction_level=prediction_level, 
             valid_idxs=valid_idxs)
-        print(valid_idxs)
     
     
+    # enable LDS-Smoothing  for continuous values, since high HRD_scores are rare
     weights = weighting_continuous_values(targs).reshape(-1,1)
     
-    print("len data after sampling: ", len(bags))
-    print("len targs: ", len(targs))
-    print("len weights: ", len(weights))
-    print("len valid_idxs: ", len(valid_idxs))
+
 
     
     if sample_bag_size is not None:
         #create dataset with cluster-size weighted sampled bags
-        print("creating clustered datasets")
         train_ds = make_clustered_dataset(
             bags=bags[~valid_idxs],
             targets= (targs[~valid_idxs], weights[~valid_idxs]),
@@ -180,7 +183,6 @@ def train_marugoto(
             targets= (targs[valid_idxs], weights[valid_idxs]),
             sampled_idxs=sampled_indexes[valid_idxs],
             bag_size=sample_bag_size)
-        print("done creating ")
 
     else:
         #create datasets with the whole image 
@@ -205,7 +207,7 @@ def train_marugoto(
 
     # import torch.multiprocessing
     # torch.multiprocessing.set_sharing_strategy('file_system')
-
+    
     # build dataloaders
     train_dl = DataLoader(
         train_ds, batch_size=1, shuffle=False, num_workers=1) #batch_size=64, shuffle=True drop_last=True
@@ -220,7 +222,13 @@ def train_marugoto(
 
 
     #added extra [0] because of the new tuple structure
-    model = MILModel(batch[0][0].shape[-1], 1) #batch[-1].shape[-1]
+    if MIL_model == "marugoto":
+        model = MILModel(batch[0][0].shape[-1], 1) #batch[-1].shape[-1]
+    elif MIL_model == "random_attn_topk":
+        model = get_suRe_emodel("random_attn_topk", batch[0][0].shape[-1], 1)
+    elif MIL_model == "random_4_quantile":
+        model = get_suRe_emodel("random_4_quantile", batch[0][0].shape[-1], 1)
+        
 
     # print(model)
     # MILModel(
@@ -270,12 +278,13 @@ def train_marugoto(
         CSVLogger()]
 
     # with learn.no_bar():
+    #     learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
     learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
-
     return learn
 
 def train_marugoto_crossval(
     *, 
+    MIL_model: str,
     fold_path,
     fold_df, 
     target_label,
@@ -307,6 +316,7 @@ def train_marugoto_crossval(
 
 
     learn = train_marugoto(
+        MIL_model=MIL_model,
         bags=fold_df.feature_files.values,
         targets=(fold_df[target_label].values).reshape(-1,1),
         # add_features=add_features,

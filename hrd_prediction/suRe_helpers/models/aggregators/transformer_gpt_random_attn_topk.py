@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from einops import repeat
 
-from models.aggregators.aggregator import BaseAggregator
-from models.aggregators.model_utils_gpt_random_attn_topk import Attention, FeedForward, PreNorm
+from .aggregator import BaseAggregator
+from .model_utils_gpt_random_attn_topk import Attention, FeedForward, PreNorm
 
 
 class TransformerBlocks(nn.Module):
@@ -63,6 +63,8 @@ class Transformer_gpt_random_attn_topk(BaseAggregator):
         self.pos_enc = pos_enc
 
     def forward(self, x, coords=None, distances_matrix=None, register_hook=False):
+        # print(x[0].shape)
+        x = x[0]
         b, _, _ = x.shape
 
         x = self.projection(x)

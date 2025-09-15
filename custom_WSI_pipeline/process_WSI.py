@@ -67,7 +67,7 @@ def main(args):
     print(f"Model {args.model} created successfully.")
     
     failed_slides = []
-    # svs_dir.reverse()
+    svs_dir.reverse()
     
     for slide_url in (progress := tqdm(svs_dir, leave=False, total=len(svs_dir), file=sys.stdout)):
         
@@ -198,7 +198,22 @@ def main(args):
         data_df = pd.read_excel("datafiles/TCGA_CPTAC_data.xlsx", index_col="feature_file")
         for slide in failed_slides:
             data_df.loc[f"{slide}.h5", "process_error"] = True
-        data_df.to_excel("datafiles/TCGA_CPTAC_data.xlsx")        
+        
+        complete_tcga = json.load(open("datafiles/TCGA_complete.json"))
+
+        c_tcga_filenames = [case["file_name"][:-4] for case in complete_tcga if case["cases"][0]["project"]["project_id"] == "TCGA-BRCA"]
+        print("#########")
+        print(len(c_tcga_filenames))
+        for file in data_df[data_df["cohort"] == "TCGA_BRCA"].index:
+            if file[:-3] not in c_tcga_filenames:
+                print(file)
+                return
+                data_df.loc[file, "process_error"] = True
+        
+        
+        data_df.to_excel("datafiles/TCGA_CPTAC_data.xlsx")  
+
+                
                 
 
 
