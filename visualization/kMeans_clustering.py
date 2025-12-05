@@ -50,6 +50,7 @@ def main(args):
     png_image = Image.open(args.dataset_path + f'/PNG/{args.sample_id}/slide.jpg')
     colors = get_colors(50)
     model_dirs = glob.glob(args.dataset_path + "/features/*")
+    print(f"Models: {model_dirs}")
     n_models = len(model_dirs)
     
     # Get image size for axis limits
@@ -57,7 +58,7 @@ def main(args):
     xlim = (0, img_width)
     ylim = (0, img_height)
 
-    fig, axes = plt.subplots(2, int((n_models + 1)/2), figsize=(3 * (n_models + 1), 10))
+    fig, axes = plt.subplots(2, round((n_models + 1)/2), figsize=(3 * (n_models + 1), 10))
     
     axes = axes.flatten()
     # Plot original image
@@ -74,7 +75,9 @@ def main(args):
         axes[idx + 1].set_xlim(xlim)
         axes[idx + 1].invert_yaxis()
 
-
+    used = n_models + 1     # original image + number of models
+    for ax in axes[used:]:
+        fig.delaxes(ax)
     
     plt.tight_layout()
     path = os.path.join(plot_path, f"{args.sample_id}_clusters.jpg")
@@ -86,7 +89,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Visualize clustering results')
-    parser.add_argument('--sample_id', type=str, default="C3L-01052-21", help='Name of the sample to visualize')
+    parser.add_argument('--sample_id', type=str, default="C3N-01011-22", help='Name of the sample to visualize')
     parser.add_argument('--save_path', type=str, default='./visualization/figures', help='Path to save the visualization results')
     parser.add_argument('--dataset_path', type=str, default='/data/datasets/images/CPTAC/PDA', help='Dataset the case belongs to')
 

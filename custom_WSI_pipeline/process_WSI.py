@@ -182,7 +182,7 @@ def main(args):
                 # os.remove(str(slide_url))
 
             else:
-                print(f"{args.model}/{slide_name}_loaded.h5 already exists. Skipping...")
+                print(f"{args.model}/{slide_name}.h5 already exists. Skipping...")
                 # print(f"Deleting slide {slide_name} from local folder...")
                 # os.remove(str(slide_url))
         except Exception as e:
@@ -207,7 +207,6 @@ def main(args):
         for file in data_df[data_df["cohort"] == "TCGA_BRCA"].index:
             if file[:-3] not in c_tcga_filenames:
                 print(file)
-                return
                 data_df.loc[file, "process_error"] = True
         
         
@@ -291,8 +290,8 @@ if __name__ == "__main__":
                         help='Path to save results to.')
     parser.add_argument('--wsi-dir', metavar='DIR', type=Path, required=True,
                         help='Path of where the whole-slide images are.')
-    parser.add_argument('-m', '--model', type=str, required=True, choices=["UNI", "UNI_2", "RetCCL", "GPFM", "CONCH"],
-                        help='The model to use for feature extraction. Choose between ["UNI", "UNI_2", "RetCCL", "GPFM", "CONCH"]')
+    parser.add_argument('-m', '--model', type=str, required=True, choices=["UNI", "UNI_2", "RetCCL", "GPFM", "CONCH", "Virchow_2"],
+                        help='The model to use for feature extraction. Choose between ["UNI", "UNI_2", "RetCCL", "GPFM", "CONCH", Virchow_2]')
     parser.add_argument('--jpg-dir', type=Path, default=None,
         help='Directory to cache extracted features etc. in.')
 

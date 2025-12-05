@@ -30,6 +30,7 @@ class BagDataset(Dataset):
     instances will be drawn.  Smaller bags are padded with zeros.  If
     `bag_size` is None, all the samples will be used.
     """
+    return_distance_matrix: bool = False
 
     def __len__(self):
         return len(self.bags)

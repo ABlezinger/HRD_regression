@@ -63,8 +63,11 @@ class Transformer_gpt_random_4_quantile(BaseAggregator):
         self.pos_enc = pos_enc
 
     def forward(self, x, coords=None, distances_matrix=None, register_hook=False):
-        x = x[0]
         
+        # print(x)
+        x = x[0]
+        # print("########")
+        # print(x)
         b, _, _ = x.shape
 
         x = self.projection(x)
@@ -83,6 +86,7 @@ class Transformer_gpt_random_4_quantile(BaseAggregator):
         return self.mlp_head(self.norm(x))
 
 
-transformer = Transformer_gpt_random_4_quantile(num_classes=2)
-transformer(torch.rand(1, 1, 2048))
+if __name__ == "__main__":
+    transformer = Transformer_gpt_random_4_quantile(num_classes=2)
+    transformer(torch.rand(1, 1, 2048))
 

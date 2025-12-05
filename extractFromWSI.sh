@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=RetCCL_rev_extractFeatures
+#SBATCH --job-name=rev_extract_Virchow2-TBRCA
 #SBATCH --output=./logs/extraction/%j-%x-log.txt
 #SBATCH --error=./logs/extraction/%j-%x-error.txt
 #SBATCH --nodes=1
@@ -12,10 +12,10 @@
 
 
 #parameters
-extraction_model="RetCCL"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2"
-output_dir="/data/datasets/images/CPTAC/LUAD/features"
-jpg_dir="/data/datasets/images/CPTAC/LUAD/PNG"
-wsi_dir="/data/datasets/images/CPTAC/LUAD"
+extraction_model="Virchow_2"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2", "Virchow_2"
+output_dir="/data/datasets/images/TCGA/BRCA/features"
+jpg_dir="/data/datasets/images/TCGA/BRCA/PNG"
+wsi_dir="/data/datasets/images/CPTAC/BRCA"
 
 final_output_path="$output_dir/$extraction_model"
 
@@ -28,7 +28,7 @@ else
     conda activate cenv
 fi
 
-srun -u python3 custom_WSI_pipeline/process_WSI.py \
+srun --cpu-bind=none -u python3 custom_WSI_pipeline/process_WSI.py \
     --wsi-dir $wsi_dir  \
     --model $extraction_model  \
     --output-dir $final_output_path \

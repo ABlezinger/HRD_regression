@@ -190,6 +190,10 @@ def mean_squared_error(
     #ONLY LOOK AT THE TARGET, NOT THE WEIGHT
     y_pred = y_pred[0]
 
+    if isinstance(y_true, torch.Tensor): 
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor): 
+        y_pred = y_pred.detach().cpu().numpy()
 
     output_errors = np.average((y_true - y_pred) ** 2, axis=0, weights=sample_weight)
 

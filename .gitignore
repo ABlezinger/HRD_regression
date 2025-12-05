@@ -16,3 +16,9 @@ debugging
 hrd_prediction/results
 visualization/auroc_plots
 visualization/roc_plots
+
+*.db
+
+bilder
+
+**.png

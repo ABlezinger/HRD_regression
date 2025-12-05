@@ -21,10 +21,21 @@ def plot_auroc_values(args, auroc_values):
     
     
     plt.clf()
-    plt.boxplot(auroc_values.values(), label=auroc_values.keys())
-    plt.xticks(range(1, len(auroc_values) + 1), list(auroc_values.keys()))
+    order = ["RetCCL", "CONCH", "GPFM", "UNI", "UNI_2", "Virchow_2"]
+    colors = ["#fbb4ae", "#b3cde3", "#ccebc5", "#fed9a6", "#d6bddb", "#77dd77"]  # Pastel colors
+
+    ordered_values = [auroc_values[model] for model in order if model in auroc_values]
+    box = plt.boxplot(ordered_values, patch_artist=True)
+
+    for patch, color in zip(box['boxes'], colors):
+        patch.set_facecolor(color)
+    for median in box['medians']:
+        median.set_color('black')
+        median.set_linewidth(1)    
+    plt.xticks(range(1, len(auroc_values) + 1), order)
     plt.title(f"AUROC for different feature extraction models on {args.cohort}")
     plt.ylabel('AUROC')
+    plt.grid(axis='y', color='gray', linestyle='--', alpha=0.4)
     plt.ylim(0.0, 1.0)
     plt.xlabel('Extraction model')
     plt.savefig(plot_path/f'{args.target_label}.jpg')
@@ -53,7 +64,7 @@ def plot_roc_curves(args):
         auroc_list = []
         for f, fold in enumerate(glob.glob(model + '/fold*')):
             pred_df = pd.read_csv(Path(fold)/'patient-preds.csv')
-            y_true = pd.Series(pred_df[args.target_label]>42)
+            y_true = pd.Series(pred_df[args.target_label]>=42)
             y_pred = pred_df['pred']
             
             fpr, tpr, _ = roc_curve(y_true, y_pred)
@@ -78,14 +89,17 @@ def plot_roc_curves(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Visualize clustering results')
     parser.add_argument('--result_path', type=str, default='hrd_prediction/results', help='Path to the results directory containing model outputs')
-    parser.add_argument('--sampling', type=str, default='bagsize_1200_nSamples_1', help='Cluster size based sampling config')
+    # parser.add_argument('--sampling', type=str, default='upsampling_20_bins_bagsize_800_nSamples_1', help='Cluster size based sampling config')
+    parser.add_argument('--sampling', type=str, default='bagsize_600_nSamples_1', help='Cluster size based sampling config')
     # parser.add_argument('--sampling', type=str, default='no_sampling', help='Cluster size based sampling config')
-    parser.add_argument('--cohort', type=str, default='TCGA_UCEC', help='Name of the patient cohort to plot')
+    parser.add_argument('--cohort', type=str, default='TCGA_LUAD', help='Name of the patient cohort to plot')
     parser.add_argument('--target_label', type=str, default='HRD_sum', help='Target label to plot ROC for')
     parser.add_argument('--save_path', type=str, default='visualization', help='Path to save the plot')
     parser.add_argument('--prediction_level', default="patient", type=str, choices=['slide', 'patient'], help='Wether to predict HRD for each slide or per patient, based on all slides of the patient.')
     parser.add_argument('--MIL_type', type=str, default='random_attn_topk', choices=["marugoto", "random_attn_topk", "random_4_quantile"], help='Type of MIL model used')
     
-
     args = parser.parse_args()
-    main(args)
+    
+    for cohort in ["TCGA_UCEC", "TCGA_BRCA" , "TCGA_LUAD"]:
+        args.cohort = cohort    
+        main(args)

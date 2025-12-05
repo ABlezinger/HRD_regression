@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from fastai.vision.all import (
     Learner, DataLoader, DataLoaders, RocAuc,
     SaveModelCallback, CSVLogger, GradientAccumulation)
+import fastai
 #from fastai.callback import tensorboard
 
 #from fastai.callback.tensorboard import TensorBoardCallback
@@ -40,7 +41,7 @@ from marugoto_helpers.loss import mean_squared_error
 # from fastai.vision.all import * #same as avive
 
 from marugoto_helpers.data import make_whole_slide_dataset
-from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling
+from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling, get_random_samples
 from suRe_helpers.sure_model import get_suRe_emodel
 # from suRe_helpers.data import make_image_level_dataset
 from marugoto_helpers.model import MILModel
@@ -65,7 +66,13 @@ def train_marugoto(
     path: Optional[Path] = None,
     sample_bag_size: Optional[int] = None,
     sample_amount: int = 1,
-    cluster_based_upsampling = False
+    sample_randomly:bool = False,
+    use_cluster_based_upsampling: bool = False,
+    upsampling_bins: int = 10,
+    alpha: float = 0.1,
+    beta: float = 0.2,
+    
+    no_save: bool = False,
 ) -> Learner:
     """Train a MLP on image features.
 
@@ -75,7 +82,7 @@ def train_marugoto(
         add_features:  An (encoder, targets) pair for each additional input.
         valid_idxs:  Indices of the datasets to use for validation.
     """
-
+    
     def get_bin_idx(x, bins):
     #TODO: find optimal binning strategy
         '''
@@ -148,20 +155,34 @@ def train_marugoto(
     elif(prediction_level == "patient"):    
         targs = targets
 
-    if cluster_based_upsampling:
-        arrange_bags_for_upsamling(bags, targs, valid_idxs)
+    if use_cluster_based_upsampling:
+        b, t, v = arrange_bags_for_upsamling(bags=bags, targs=targs, valid_idxs=valid_idxs, n_bins=upsampling_bins, alpha=alpha, beta=beta)
+        bags = np.concatenate([bags, b])
+        targs = np.concatenate([targs, t])
+        valid_idxs = np.concatenate([valid_idxs, v])
         
+        print(f"Bin distribution of upsampled eintities: {np.histogram(targs, bins=upsampling_bins, density=False)[0]}")
+
         
     #create samples with cluster-size weighted sampling        
     if sample_bag_size is not None:
         print("Creating clustered samples with fixed bag size: ", sample_bag_size)
-        bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
-            bags=bags, 
-            targs=targs, 
-            bag_size=sample_bag_size, 
-            num_samples=sample_amount, 
-            prediction_level=prediction_level, 
-            valid_idxs=valid_idxs)
+        if sample_randomly:
+            bags, targs, valid_idxs, sampled_indexes = get_random_samples(
+                bags=bags, 
+                targs=targs, 
+                bag_size=sample_bag_size, 
+                num_samples=sample_amount, 
+                prediction_level=prediction_level, 
+                valid_idxs=valid_idxs)
+        else:
+            bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
+                bags=bags, 
+                targs=targs, 
+                bag_size=sample_bag_size, 
+                num_samples=sample_amount, 
+                prediction_level=prediction_level, 
+                valid_idxs=valid_idxs)
     
     
     # enable LDS-Smoothing  for continuous values, since high HRD_scores are rare
@@ -185,7 +206,6 @@ def train_marugoto(
             bag_size=sample_bag_size)
 
     else:
-        #create datasets with the whole image 
         train_ds = make_whole_slide_dataset(
             bags=bags[~valid_idxs],
             targets= (targs[~valid_idxs], weights[~valid_idxs]),
@@ -253,6 +273,7 @@ def train_marugoto(
     loss_func = WeightedMSELoss()
 
     dls = DataLoaders(train_dl, valid_dl)
+    dls.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
     
     #SGD instead of Adam standard, from Graziani et al.
     #def opt_func(params, **kwargs): return OptimWrapper(SGD(params, lr=.0001, mom=.9, wd=0.01))
@@ -267,19 +288,28 @@ def train_marugoto(
         metrics=[mean_squared_error],
         path=path,
         )
+    
+    print("DEVICE: ", str(learn.dls.device))
+    print("CUDA: ", torch.cuda.is_available())
 
-
-    cbs = [
-        SaveModelCallback(fname=f'best_valid'),
-        #EarlyStoppingCallback(monitor='roc_auc_score',
-        #                      min_delta=0.01, patience=patience),
-        #GradientAccumulation(n_acc=64),
-        #TensorBoardCallback(),
-        CSVLogger()]
-
-    # with learn.no_bar():
-    #     learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
-    learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
+    if not no_save: 
+        cbs = [
+            SaveModelCallback(fname=f'best_valid'),
+            #EarlyStoppingCallback(monitor='roc_auc_score',
+            #                      min_delta=0.01, patience=patience),
+            #GradientAccumulation(n_acc=64),
+            #TensorBoardCallback(),
+            CSVLogger()]
+        
+    else:
+        cbs = []
+        
+    print("Starting training...")
+    with learn.no_bar():
+        learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
+    # learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
+    
+    del dls
     return learn
 
 def train_marugoto_crossval(
@@ -295,6 +325,9 @@ def train_marugoto_crossval(
     n_epochs=25,
     sample_bag_size=None,
     sample_amount=1,
+    sample_randomly:bool = False,
+    use_cluster_based_upsampling:bool = False,
+    upsampling_bins:int = 10,
     ) -> Learner:
 
     """Helper function for training the folds."""
@@ -304,10 +337,10 @@ def train_marugoto_crossval(
 
     if binary_label is not None:
         train_patients, valid_patients = train_test_split(
-            fold_df.patient_id, stratify=fold_df[binary_label], random_state=1337)
+            fold_df.patient_id, stratify=fold_df[binary_label], random_state=1337) # 1337
     else:
         train_patients, valid_patients = train_test_split(
-            fold_df.patient_id, random_state=1337)
+            fold_df.patient_id, random_state=1337) # 1337
         
     train_df = fold_df[fold_df.patient_id.isin(train_patients)]
     valid_df = fold_df[fold_df.patient_id.isin(valid_patients)]
@@ -326,6 +359,9 @@ def train_marugoto_crossval(
         n_epoch=n_epochs,
         sample_bag_size=sample_bag_size,
         sample_amount=sample_amount,
+        sample_randomly=sample_randomly,
+        use_cluster_based_upsampling= use_cluster_based_upsampling,
+        upsampling_bins = upsampling_bins
     )
     
     learn.target_label = target_label
@@ -342,6 +378,7 @@ def deploy(
     cat_labels: Optional[Sequence[str]] = None, 
     cont_labels: Optional[Sequence[str]] = None,
     sample_bag_size: Optional[int] = None,
+    sample_randomly:bool = False,
 ) -> pd.DataFrame:
     assert test_df.patient_id.nunique() == len(test_df), 'duplicate patients!'
 
@@ -381,22 +418,28 @@ def deploy(
 
     if sample_bag_size is not None:
         # only create one sample per bag for inference
-        targs, bags, _,  sampled_indexes = get_clustered_samples(
+        if sample_randomly:
+            bags, targs, _,  sampled_indexes = get_random_samples(
             bags=bags, 
             targs=targs, 
             bag_size=sample_bag_size, 
             num_samples=1, 
             prediction_level=prediction_level)
+        else:
+            bags, targs, _,  sampled_indexes = get_clustered_samples(
+                bags=bags, 
+                targs=targs, 
+                bag_size=sample_bag_size, 
+                num_samples=1, 
+                prediction_level=prediction_level)
         
         test_ds = make_clustered_dataset(
             bags=bags,
             targets=(targs, np.ones(targs.shape).reshape(-1,1)), #(target_enc, )
             sampled_idxs=sampled_indexes,
             bag_size=sample_bag_size)
+    
     else:
-    
-    
-        #CHANGED
         test_ds = make_whole_slide_dataset(
             bags=bags,
             #weights=weights.reshape(-1,1),
@@ -406,7 +449,9 @@ def deploy(
 
     test_dl = DataLoader(
         test_ds, batch_size=1, shuffle=False, num_workers=0) #shuffle=True #drop_last=True
-
+    
+    test_dl.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    
 
     patient_preds, patient_targs = learn.get_preds(dl=test_dl)
     patient_targs = patient_targs[0]
@@ -428,5 +473,6 @@ def deploy(
         target_label,
         'pred',
         'loss']]
+    del test_dl
 
     return patient_preds_df

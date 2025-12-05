@@ -1,9 +1,0 @@
-build/
-CX1*/
-runs/
-*.sh
-*.ipynb
-*.csv
-*.pyc
-*.pyc
-*.txt

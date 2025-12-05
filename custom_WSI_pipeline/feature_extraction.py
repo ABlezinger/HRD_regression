@@ -133,6 +133,8 @@ def create_model(extraction_model: str) -> nn.Module:
         model = get_RetCCL_model()
     elif extraction_model == "GPFM":
         model = get_gpfm_model()
+    elif extraction_model == "Virchow_2":
+        model = get_gpfm_model()
     elif extraction_model == "CONCH":
         from models.CONCH.conch_model import get_conch_model
         model = get_conch_model()

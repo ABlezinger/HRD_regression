@@ -51,10 +51,11 @@ def get_suRe_emodel(model_type, input_dim, output_dim):
     
     
 if __name__ == "__main__":
+    print("ARSCHLOCH")
     
-    parser = argparse.ArgumentParser()
+    # parser = argparse.ArgumentParser()
     
-    parser.add_argument("--sure_type", type=str, default="random_4_quantile", choices=["random_attn_tok", "random_4_quantile"])
-    args = parser.parse_args()
-    get_suRe_emodel(args, 2048)
+    # parser.add_argument("--sure_type", type=str, default="random_4_quantile", choices=["random_attn_tok", "random_4_quantile"])
+    # args = parser.parse_args()
+    # get_suRe_emodel(args, 2048)
     

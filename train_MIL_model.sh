@@ -1,32 +1,64 @@
 #!/bin/bash
 
-#SBATCH --job-name=TrainMILModel
+#SBATCH --job-name=UCEC_LUAD_1200
 #SBATCH --output=./logs/%x/%j-log.txt
 #SBATCH --error=./logs/%x/%j-error.txt
 #SBATCH --time=90:00:00
-#SBATCH --nodes=1
+#SBATCH --nodelist=gpunode04
 #SBATCH --cpus-per-task=32
-#SBATCH --gres=gpu:a100:1 
+#SBATCH --gpus=1
+#SBATCH --partition=ampere
 #SBATCH --chdir=/home/alexander.blezinger/HRD_regression
 
 
 module load conda 
-conda activate hrd_pred
+conda activate hrd_new
 
 datafile="datafiles/TCGA_CPTAC_data.xlsx"
-MIL_type="marugoto"
-extraction_model="RetCCL"
-cohort="TCGA_LUAD"
+MIL_model="marugoto"  #["marugoto", "random_attn_topk", "random_4_quantile"]
+extraction_model="Virchow_2"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2", "Virchow_2"
+cohort="UCEC-LUAD"  # Options: "UCEC", "LUAD", 
 target_label="HRD_sum"
 epochs=25
+prediciton_level="patient" # patient or slide
+bag_size=1200
+sample_amount=1
 
 
+## STANDARD marugoto
 
-srun -u python3 hrd_prediction/train_prediction_model.py \
-    --MIL_type $MIL_type\
+srun --cpu-bind=none -u python3 hrd_prediction/train_prediction_model.py \
+    --MIL_model $MIL_model\
     --extraction_model $extraction_model \
     --cohort $cohort \
     --target_label $target_label \
-    --patient_data_file $datafile \
     --epochs $epochs \
-# python3 hrd_prediction/train_prediction_model.py --MIL_type "test" --extraction_model "resnet50" --cohort "TCGA_LUAD" --target_label "HRD_sum" --patient_data_file "datafiles/TCGA_CPTAC_data.xlsx" --epochs 25 
+    --prediction_level $prediciton_level \
+# python3 hrd_prediction/train_prediction_model.py --MIL_model "marugoto" --extraction_model "CONCH" --cohort "UCEC" --target_label "HRD_sum" --prediction_level "patient"
+
+## CLUSTER_WEIGHTED SAMPLING MARUGOTO and SURE
+
+# srun --cpu-bind=none -u python3 hrd_prediction/train_prediction_model.py \
+#     --MIL_model $MIL_model\
+#     --extraction_model $extraction_model \
+#     --cohort $cohort \
+#     --target_label $target_label \
+#     --epochs $epochs \
+#     --prediction_level $prediciton_level \
+#     --sample_bag_size $bag_size \
+#     --sample_amount $sample_amount
+# python3 hrd_prediction/train_prediction_model.py --MIL_model "random_attn_topk" --extraction_model "Virchow_2" --cohort "LUAD" --target_label "HRD_sum" --prediction_level "patient" --sample_bag_size 600 --sample_amount 1
+
+# CLUSTER BASED UPSAMPLING 
+# srun --cpu-bind=none -u python3 hrd_prediction/train_prediction_model.py \
+#     --MIL_model $MIL_model\
+#     --extraction_model $extraction_model \
+#     --cohort $cohort \
+#     --target_label $target_label \
+#     --epochs $epochs \
+#     --prediction_level $prediciton_level \
+#     --sample_bag_size $bag_size \
+#     --sample_amount $sample_amount\
+#     --use_cluster_based_upsampling \
+#     --upsampling_bins 7
+#python3 hrd_prediction/train_prediction_model.py --MIL_model "marugoto" --extraction_model "CONCH" --cohort "UCEC" --target_label "HRD_sum" --prediction_level "patient" --sample_bag_size 600 --sample_amount 1 --use_cluster_based_upsampling --upsampling_bins 10
