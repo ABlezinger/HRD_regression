@@ -20,6 +20,7 @@ import seaborn as sns
 import scipy
 import os
 from collections import defaultdict
+import gc
 #from marugoto.data import FunctionTransformer
 
 from _mil import train_marugoto, train_marugoto_crossval, deploy
@@ -51,11 +52,11 @@ def train_CAMIL_model(
     
     ## DATA LOADING AND PREPROCESSING 
     if sample_bag_size is None:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_full_train/no_sampling_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
+        output_path = Path(f"hrd_prediction/results/real_{MIL_model}_full_train/no_sampling_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
     elif use_cluster_based_upsampling:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_full_train/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
+        output_path = Path(f"hrd_prediction/results/real_{MIL_model}_full_train/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
     else:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_full_train/bagsize_{sample_bag_size}_nSamples_{sample_amount}_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
+        output_path = Path(f"hrd_prediction/results/real_{MIL_model}_full_train/bagsize_{sample_bag_size}_nSamples_{sample_amount}_seed_{seed}/{prediction_level}/{cohort}/{extraction_model}")
     
     if not no_save: 
         os.makedirs(output_path, exist_ok=True)
@@ -154,6 +155,12 @@ def train_CAMIL_model(
     test_patient_preds[target_label] = scaler.inverse_transform(test_patient_preds[target_label].values.reshape(-1,1))
     test_patient_preds['pred'] = scaler.inverse_transform(test_patient_preds['pred'].values.reshape(-1,1))
     
+    #cleanup 
+    del learn
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
+    gc.collect()
+    
     if not no_save:
         
         plot_pcc(test_patient_preds, target_label, output_path, extraction_model)
@@ -183,27 +190,33 @@ def train_CAMIL_model_crossval(
     n_splits: int = 5,
     sample_bag_size: int = None,
     sample_amount: int = 1,
-    sample_randomly:bool = False,
+    sampling_strategy: str  = "cluster_size",
     use_cluster_based_upsampling:bool = False,
     upsampling_bins:int = 10,
     alpha: float = 0.65,
     beta: float = 0.25,
     ):
     
-    if sample_bag_size is None:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}")
-    elif use_cluster_based_upsampling:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}") 
+    prefix = ""
     
-    elif sample_randomly:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
+    if sample_bag_size is None:
+        output_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/no_sampling/{prediction_level}/{cohort}")
+    elif use_cluster_based_upsampling:
+        output_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/upsampling_{upsampling_bins}_bins_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}") 
+    elif sampling_strategy == "random":
+        output_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
+    elif sampling_strategy == "clustered_random":
+        output_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/clustered_random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/clustered_random_sampling_bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
     else:
-        output_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
-        fold_save_path = Path(f"hrd_prediction/results/{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
+        output_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}/{extraction_model}")
+        fold_save_path = Path(f"hrd_prediction/results/{prefix}real_{MIL_model}_crossval/bagsize_{sample_bag_size}_nSamples_{sample_amount}/{prediction_level}/{cohort}")
+    
     os.makedirs(output_path, exist_ok=True)
+    print(fold_save_path)
     info = {
         'description': f'{extraction_model} MIL cross-validation',
         'target_label': str(target_label),
@@ -272,7 +285,7 @@ def train_CAMIL_model_crossval(
                 prediction_level=prediction_level, 
                 sample_bag_size=sample_bag_size,
                 sample_amount=sample_amount,
-                sample_randomly=sample_randomly,
+                sampling_strategy=sampling_strategy,
                 use_cluster_based_upsampling=use_cluster_based_upsampling,
                 upsampling_bins=upsampling_bins,
                 ) #added weights #fold_weights_train=fold_weights_train
@@ -292,6 +305,8 @@ def train_CAMIL_model_crossval(
             cat_labels=cat_labels, 
             cont_labels=cont_labels,
             prediction_level=prediction_level,
+            sampling_strategy=sampling_strategy,
+            sample_bag_size=sample_bag_size
         )
 
         #rescale ground truth and patient predictions to original range
@@ -313,6 +328,13 @@ def train_CAMIL_model_crossval(
         ax.savefig(fold_path/"correlation_plot.png")
 
         patient_preds_df.to_csv(preds_csv, index=False)
+        
+        
+        #cleanup 
+        del learn
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        gc.collect()
         
 def plot_pcc(patient_preds_df, target_label, save_path, extraction_model):
 

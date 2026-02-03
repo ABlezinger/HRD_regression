@@ -8,6 +8,17 @@ import torch
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
+from tqdm import tqdm
+
+CLUSTERS = 50
+
+CLUSTER_ID_KEY_MAP = {
+        50: "patient_cluster_labels",
+        25: "patient_cluster_labels_25",
+        10: "patient_cluster_labels_10",
+        5: "patient_cluster_labels_5"
+    }
+
 
 @dataclass
 class ClusteredBagDataset(Dataset):
@@ -38,17 +49,26 @@ class ClusteredBagDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         # collect all the features
         feats = []
+        coords = []
         image_clusters = []
         for bag_file in self.bags[index]:
             with h5py.File(bag_file, 'r') as f:
                 feats.append(torch.from_numpy(f['feats'][:]))
+                coords.append(torch.from_numpy(f['coords'][:]))
 
         feats = torch.concat(feats).float()
+        coords = torch.concat(coords).float()
         
         #select subset and order the features according to the clusters        
         feats = feats[self.sample_idxs[index].astype(int)]
+        coords = coords[self.sample_idxs[index].astype(int)]
+        coords[:, 1:] = coords[:, 1:] / coords[:, 1:].max(dim=0).values
 
-        return feats, len(feats)
+        distances_matrix = euclidean_distance_matrix(coords)
+        # print("DISTANCE Matrix: ----------")
+        # print(distances_matrix)
+        # print("-----------------------")
+        return feats, len(feats), distances_matrix
     
 class MapDataset(Dataset):
     def __init__(
@@ -85,8 +105,12 @@ class MapDataset(Dataset):
 
     def __getitem__(self, index: int) -> Any:
         #breakpoint()
-
+        
         items = [(ds[index] if len(ds)!=2 else (ds[0][index], ds[1][index])) for ds in self._datasets]
+        # print("ITEMS: #####")
+        
+        # print(items)
+        # print("#########")
         return items #self.func(*[ds[index] for ds in self._datasets])
 
     def new_empty(self):
@@ -101,7 +125,7 @@ def get_clustered_samples(
     bag_size: int,
     num_samples: int,
     prediction_level: str,
-    valid_idxs: Optional[np.ndarray] = None
+    valid_idxs: Optional[np.ndarray] = None,
     ) -> Tuple[list, np.ndarray, np.ndarray, list]:
     """Create a given amount of samples from the feature files, based on the tile feature clusters
 
@@ -119,6 +143,10 @@ def get_clustered_samples(
             - valid_idxs: validation indicies for each bag
             - sample_idxs: Array of indices used to select features for each sample
     """
+    cluster_key = CLUSTER_ID_KEY_MAP[CLUSTERS]
+    
+    
+    
     new_bags = []
     new_targs = []
     sample_idxs = []
@@ -140,10 +168,10 @@ def get_clustered_samples(
             if prediction_level == "slide":
                 bag_clusters.extend(np.array(h5_file["cluster_labels"]))
                 # perform_clustering = True
-            elif prediction_level == "patient" and "patient_cluster_labels" in h5_file.keys():
-                bag_clusters.extend(np.array(h5_file["patient_cluster_labels"]))
+            elif prediction_level == "patient" and cluster_key in h5_file.keys():
+                bag_clusters.extend(np.array(h5_file[cluster_key]))
                 # perform_clustering = True
-            elif prediction_level == "patient" and "patient_cluster_labels" not in h5_file.keys():
+            elif prediction_level == "patient" and cluster_key not in h5_file.keys():
                 # perform initial clustering in the next step if it has not been done yet
                 perform_clustering = True
             else:
@@ -154,23 +182,25 @@ def get_clustered_samples(
         
         # Cluster features on patient level and save the cluster labels in each h5 file.
         if perform_clustering:
-            print("creating initial patient clusters")
+            print("creating initial patient clusters K: ", CLUSTERS)
             bag_clusters = kmeans_clustering(bag_features.numpy(), n_clusters=50)
             n = 0
             for i, file in enumerate(bag):
                 h5_file = h5py.File(file, 'r+')
                 file_length = h5_file["feats"].shape[0]
-                if "patient_cluster_labels" in h5_file:
-                    del h5_file["patient_cluster_labels"]
-                if "patient_cluster_labels" not in h5_file.keys():
-                    h5_file.create_dataset("patient_cluster_labels", data=bag_clusters[n : n+file_length])
+                if cluster_key in h5_file:
+                    del h5_file[cluster_key]
+                if cluster_key not in h5_file.keys():
+                    h5_file.create_dataset(cluster_key, data=bag_clusters[n : n+file_length])
                 n += file_length
                 h5_file.close()
         
         bag_clusters = np.array(bag_clusters)
         
+        
         # sample clustersize weighted features
-        unique_ids, counts = np.unique(bag_clusters, return_counts=True)
+        unique_ids, counts = np.unique(bag_clusters, return_counts=True)           
+        
         
         # if less features than bag, just sort the indexes according to clusters
         if len(bag_features) <= bag_size:
@@ -185,8 +215,9 @@ def get_clustered_samples(
         for _ in range(num_samples):    
             sampled_indices = []
             cluster_count = np.zeros_like(unique_ids)
+            
             for cluster_id, count in zip(unique_ids, counts):
-                if bag_size == 50:
+                if bag_size == CLUSTERS:
                     # if bagsize = k from kMeans (50), sample one feature per cluster 
                     n_cluster_instances = 1
                 else:
@@ -199,9 +230,9 @@ def get_clustered_samples(
                 cluster_count[cluster_id] = n_cluster_instances
 
                 sampled_indices.extend(chosen)
+        
             sampled_indices = np.array(sampled_indices, dtype=int)
             
-            # if len(sampled_indices) != bag_size:
             while len(sampled_indices) != bag_size:
                 clus = bag_clusters[sampled_indices]
                              
@@ -245,6 +276,13 @@ def get_clustered_samples(
         
     return new_bags, new_targs, new_valid_idxs, sample_idxs  #, np.array(clus)
 
+def euclidean_distance_matrix(coords):
+    n = coords.size(0)
+    diff = coords[:, 1:, None] - coords[:, 1:, None].transpose(0, 2)
+    squared_diff = diff ** 2
+    sum_squared_diff = squared_diff.sum(dim=1)
+    distances = torch.sqrt(sum_squared_diff)
+    return distances
 
 def get_random_samples(
     bags: np.ndarray, 
@@ -285,6 +323,8 @@ def get_random_samples(
                 new_valid_idxs.append(valid_idxs[i])
             continue
 
+
+        
         # Create samples
         for _ in range(num_samples):
 
@@ -308,6 +348,134 @@ def get_random_samples(
     sample_idxs = np.array(sample_idxs, dtype=object)
 
     return new_bags, new_targs, new_valid_idxs, sample_idxs
+
+def get_random_clustered_samples(  
+    bags: np.ndarray, 
+    targs: np.ndarray, 
+    bag_size: int,
+    num_samples: int,
+    prediction_level: str,
+    valid_idxs: Optional[np.ndarray] = None,
+    sampling_strategy: str = "cluster_size"
+    ) -> Tuple[list, np.ndarray, np.ndarray, list]:
+    
+    
+    
+    cluster_key = CLUSTER_ID_KEY_MAP[CLUSTERS]
+    
+        
+    new_bags = []
+    new_targs = []
+    sample_idxs = []
+    # clus = []
+    new_valid_idxs = []
+    # Iterate through bags (patients or images, depends on prediction_level)
+    print("length of bags: ", len(bags))
+    for bag, target, i in tqdm(zip(bags, targs, range(len(bags))), total=len(bags)):
+        bag_features = []
+        bag_clusters = []
+        perform_clustering = False
+        # for slide level prediction, bag contains only one file 
+        for file in bag:
+            # collect all features of the bag and cluster labels
+            h5_file = h5py.File(file, 'r')
+            feats = torch.Tensor(np.array(h5_file['feats']))
+            bag_features.append(feats)
+            
+            #collect clusters for each feature_vector 
+            if prediction_level == "slide":
+                bag_clusters.extend(np.array(h5_file["cluster_labels"]))
+            elif prediction_level == "patient" and cluster_key in h5_file.keys():
+                bag_clusters.extend(np.array(h5_file[cluster_key]))
+            elif prediction_level == "patient" and cluster_key not in h5_file.keys():
+                # perform initial clustering in the next step if it has not been done yet
+                perform_clustering = True
+            else:
+                raise ValueError("prediction_level must be either 'slide' or 'patient'")
+            
+            h5_file.close()
+        bag_features = torch.concat(bag_features)
+        
+        # Cluster features on patient level and save the cluster labels in each h5 file.
+        if perform_clustering:
+            print("creating initial patient clusters K: ", CLUSTERS)
+            bag_clusters = kmeans_clustering(bag_features.numpy(), n_clusters=50)
+            n = 0
+            for _ , file in enumerate(bag):
+                h5_file = h5py.File(file, 'r+')
+                file_length = h5_file["feats"].shape[0]
+                if cluster_key in h5_file:
+                    del h5_file[cluster_key]
+                if cluster_key not in h5_file.keys():
+                    h5_file.create_dataset(cluster_key, data=bag_clusters[n : n+file_length])
+                n += file_length
+                h5_file.close()
+        
+        bag_clusters = np.array(bag_clusters)
+        
+        # sample random clustered features
+        unique_ids, counts = np.unique(bag_clusters, return_counts=True)
+        
+        if len(bag_features) <= bag_size:
+            new_bags.append(bag)
+            new_targs.append(target)
+            if valid_idxs is not None:
+                new_valid_idxs.append(valid_idxs[i])
+            sample_idxs.append(np.argsort(bag_clusters))
+            continue
+        
+        for _ in range(num_samples):
+            
+            arr = np.random.uniform(size=CLUSTERS)
+            scaled = arr * (bag_size / arr.sum())
+            ints = np.floor(scaled).astype(int)
+            ints[ints < 1] = 1
+            diff = bag_size - ints.sum()
+
+            fractions = scaled - np.floor(scaled)
+            order = np.argsort(fractions)[::-1]
+            for x in range(abs(diff)):
+                ints[order[x % CLUSTERS]] += np.sign(diff)
+            sample_counts = np.minimum(ints, counts)
+            diff = bag_size - sample_counts.sum()
+            for m in range(diff):
+                if sample_counts[m % CLUSTERS] < counts[m % CLUSTERS]:
+                    sample_counts[m % CLUSTERS] += 1
+                else:
+                    j = (m + 1) % CLUSTERS
+                    while sample_counts[j] >= counts[j]:
+                        j = (j + 1) % CLUSTERS
+                    sample_counts[j] += 1
+            
+            sampled_indices = []
+            for cluster_id, count in zip(unique_ids, sample_counts):
+                if bag_size == CLUSTERS:
+                    # if bagsize = k from kMeans (50), sample one feature per cluster 
+                    n_cluster_instances = 1
+                else:
+                    n_cluster_instances = count  # at least one instance per cluster
+                indices = np.where(bag_clusters == cluster_id)[0]
+                
+                
+                chosen = np.random.choice(indices, n_cluster_instances, replace=False)
+
+                sampled_indices.extend(chosen)
+            
+            new_bags.append(bag)
+            new_targs.append(target)
+            sample_idxs.append(np.array(sampled_indices))
+            if valid_idxs is not None:
+                new_valid_idxs.append(valid_idxs[i])
+            
+            
+    new_bags = np.array(new_bags, dtype=object)
+    new_targs = np.array(new_targs)
+    new_valid_idxs = np.array(new_valid_idxs)
+    sample_idxs = np.array(sample_idxs, dtype=object)
+    
+    return new_bags, new_targs, new_valid_idxs, sample_idxs
+    
+    
 
 def kmeans_clustering(features, n_clusters=50) -> np.ndarray:
     """

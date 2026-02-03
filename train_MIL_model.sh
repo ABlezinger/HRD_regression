@@ -1,10 +1,10 @@
 #!/bin/bash
 
-#SBATCH --job-name=UCEC_LUAD_1200
+#SBATCH --job-name=am_LU_0
 #SBATCH --output=./logs/%x/%j-log.txt
 #SBATCH --error=./logs/%x/%j-error.txt
 #SBATCH --time=90:00:00
-#SBATCH --nodelist=gpunode04
+#SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
 #SBATCH --gpus=1
 #SBATCH --partition=ampere
@@ -17,11 +17,11 @@ conda activate hrd_new
 datafile="datafiles/TCGA_CPTAC_data.xlsx"
 MIL_model="marugoto"  #["marugoto", "random_attn_topk", "random_4_quantile"]
 extraction_model="Virchow_2"  # Options: "GPFM", "RetCCL", "CONCH", "UNI", "UNI_2", "Virchow_2"
-cohort="UCEC-LUAD"  # Options: "UCEC", "LUAD", 
+cohort="LUAD-UCEC"  # Options: "UCEC", "LUAD", "UCEC-LUAD",  "LUAD-UCEC"
 target_label="HRD_sum"
 epochs=25
 prediciton_level="patient" # patient or slide
-bag_size=1200
+bag_size=600
 sample_amount=1
 
 

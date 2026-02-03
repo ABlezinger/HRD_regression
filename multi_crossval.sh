@@ -28,7 +28,7 @@ epochs=25
 prediciton_level="patient" # patient or slide
 bag_size=${bag_size:-800}
 sample_amount=1
-clustersized_upsampling=true
+sampling_strategy="random" # Options: "clustered_random", "random", "cluster_size"
 
 echo "Extraction model: $extraction_model"
 echo "Bag size: $bag_size"
@@ -75,7 +75,7 @@ conda activate hrd_new
 #     --upsampling_bins 7
 #python3 hrd_prediction/train_crossvalidation.py --MIL_model "marugoto" --extraction_model "CONCH" --cohort "CPTAC_PDA" --target_label "HRD_sum" --prediction_level "patient" --sample_bag_size 600 --sample_amount 1 --use_cluster_based_upsampling --upsampling_bins 10
 
-## Random sampling 
+## Clustered Random Sampling
 srun -u python3 hrd_prediction/train_crossvalidation.py \
     --MIL_model $MIL_type\
     --extraction_model $extraction_model \
@@ -85,4 +85,5 @@ srun -u python3 hrd_prediction/train_crossvalidation.py \
     --prediction_level $prediciton_level \
     --sample_bag_size $bag_size \
     --sample_amount $sample_amount\
-    --sample_randomly
+    --sampling_strategy $sampling_strategy
+#python3 hrd_prediction/train_crossvalidation.py --MIL_model "marugoto" --extraction_model "CONCH" --cohort "TCGA_BRCA" --target_label "HRD_sum" --prediction_level "patient" --sample_bag_size 600 --sample_amount 1 --sampling_strategy "clustered_random"

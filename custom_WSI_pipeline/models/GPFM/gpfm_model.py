@@ -392,5 +392,6 @@ def vit_giant2(patch_size=16, **kwargs):
 
 if __name__ == "__main__":
     model = get_gpfm_model()
+    print(model)
     print("GPFM model loaded successfully.")
     # You can now use the model for inference or further processing.

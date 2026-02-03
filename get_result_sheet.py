@@ -29,8 +29,25 @@ def get_stat_dict(pred_df: pd.DataFrame, cohort) -> dict:
     
     if cohort in ["TCGA_BRCA", "TCGA_UCEC", "TCGA_LUAD"]:
     
-        thresholds_mHRD = {"TCGA_BRCA": 27, "TCGA_UCEC": 5, "TCGA_LUAD": 35}
-        thresholds_tHRD = {"TCGA_BRCA": (17, 37), "TCGA_UCEC": (3, 9), "TCGA_LUAD": (26, 43)}
+        thresholds_mHRD = {
+            "TCGA_BRCA": 27, 
+            "TCGA_UCEC": 5, 
+            "TCGA_LUAD": 35, 
+            "LUAD": 35, 
+            "UCEC": 5, 
+            "LUAD_UCEC": 5,
+            "UCEC_LUAD": 35
+            }
+        
+        thresholds_tHRD = {
+            "TCGA_BRCA": (17, 37), 
+            "TCGA_UCEC": (3, 9), 
+            "TCGA_LUAD": (26, 43),
+            "LUAD": (26, 43), 
+            "UCEC": (3, 9), 
+            "LUAD_UCEC": (3, 9),
+            "UCEC_LUAD": (26, 43)
+            }
         
         mHRD_True_binary =  pd.Series(pred_df["pred"] > thresholds_mHRD[cohort])
         

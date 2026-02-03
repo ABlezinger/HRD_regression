@@ -62,8 +62,8 @@ class Transformer_gpt_random_attn_topk(BaseAggregator):
         
         self.pos_enc = pos_enc
 
-    def forward(self, x, coords=None, distances_matrix=None, register_hook=False):
-        # print(x[0].shape)
+    def forward(self, x, lens=None, distances_matrix=None, coords=None, register_hook=False):        
+        distances_matrix = x[2]
         x = x[0]
         b, _, _ = x.shape
 

@@ -14,13 +14,14 @@ from models.UNI.uni_model import get_uni_model
 from models.UNI_2.uni_2_model import get_uni2_model
 from models.RetCCL.RetCCL_model import get_RetCCL_model
 from models.CONCH.conch_model import get_conch_model
+from models.Virchow_2.virchow_2_model import get_virchow_2_model
 
 Image.MAX_IMAGE_PIXELS = None  # Disable PIL's image size limit to avoid errors with large images
 
 
 def load_one_image_tile() -> np.ndarray:
-    slide_jpg_dir = Path('test_JPGs/TCGA-G4-6298-01Z-00-DX1.83055d52-71f7-46ec-be53-11d86b19b4cf/')
-    slide_png = 'test_JPGs/TCGA-G4-6298-01Z-00-DX1.83055d52-71f7-46ec-be53-11d86b19b4cf/norm_slide.png'
+    slide_jpg_dir = Path('debugging/slide.jpg')
+    slide_png = 'debugging/slide.jpg'
     print("WSI has been normalized and converted into jpg, now extracting features...")
     # If the normalised slide png already exists, load it
     img_norm_wsi_jpg = PIL.Image.open(slide_png)
@@ -45,7 +46,8 @@ model_list = {
     "GPFM": get_gpfm_model,
     "UNI": get_uni_model,
     "UNI-2": get_uni2_model,
-    "CONCH": get_conch_model,}
+    "CONCH": get_conch_model,
+    "Virchow-2": get_virchow_2_model}
 
 image = load_one_image_tile()
 print("loaded image tile")

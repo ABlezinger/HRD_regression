@@ -46,5 +46,6 @@ def get_uni2_model() -> torch.nn.Module:
 
 if __name__ == "__main__":
     model = get_uni2_model()
+    print(model)
     print("UNI-2 model loaded successfully.")
     # You can now use the model for inference or further processing.

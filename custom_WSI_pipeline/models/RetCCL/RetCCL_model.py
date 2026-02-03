@@ -27,3 +27,10 @@ def get_RetCCL_model() -> nn.Module:
     model.eval()
         
     return model
+
+
+if __name__ == "__main__":
+    model = get_RetCCL_model()
+    print(model)
+    print("RetCCL model loaded successfully.")
+    # You can now use the model for inference or further processing.

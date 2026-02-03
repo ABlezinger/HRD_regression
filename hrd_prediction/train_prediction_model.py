@@ -22,8 +22,8 @@ def main(args):
                 train_feature_path = f"{args.dataset_path}/TCGA/{train_cohort}/features/{extraction_model}"
                 test_feature_path = f"{args.dataset_path}/CPTAC/{test_cohort}/features/{extraction_model}"
             else:
-                train_feature_path = f"{args.dataset_path}/TCGA/{args.cohort}/features/{args.extraction_model}"
-                test_feature_path = f"{args.dataset_path}/CPTAC/{args.cohort}/features/{args.extraction_model}"
+                train_feature_path = f"{args.dataset_path}/TCGA/{args.cohort}/features/{extraction_model}"
+                test_feature_path = f"{args.dataset_path}/CPTAC/{args.cohort}/features/{extraction_model}"
             
             
             # train_feature_path = f"{args.dataset_path}/TCGA/{args.cohort}/features/{extraction_model}"

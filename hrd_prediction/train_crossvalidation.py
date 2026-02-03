@@ -31,7 +31,7 @@ def main(args):
         n_splits=args.n_splits,
         sample_bag_size=args.sample_bag_size,
         sample_amount=args.sample_amount,
-        sample_randomly=args.sample_randomly,
+        sampling_strategy= args.sampling_strategy,
         use_cluster_based_upsampling=args.use_cluster_based_upsampling,
         upsampling_bins=args.upsampling_bins,
         )
@@ -60,6 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--sample_randomly", action="store_true", help="Use random sampling instead of cluster-based sampling for bag creation during training.")
     parser.add_argument("--use_cluster_based_upsampling", action="store_true", help="Usage of cluster-based Upsampling for rare HRD values. Multiple samples of the bag size are drawn from the same patient during training.")
     parser.add_argument("--upsampling_bins", type=int, default= 10, help="Amount of bins to use for the Upsampling.")
+    parser.add_argument("--sampling_strategy", type=str, default="cluster_size", choices=["cluster_size", "random", "clustered_random"], help="Sampling strategy to use for bag creation during training.")
     
     
     # config = yaml.safe_load(open("hrd_prediction/train_config.yaml", "r"))
@@ -79,8 +80,8 @@ if __name__ == "__main__":
     print(f"sample bag size:            {args.sample_bag_size}")
     print(f"sample amount: \t\t\t\t{args.sample_amount}")
     print(f"cluster based upsampling:   {args.use_cluster_based_upsampling}")
-    if args.sample_randomly:
-        print(f"random sampling:            {args.sample_randomly}")
+    print(f"upsampling bins:            {args.upsampling_bins}")
+    print(f"sampling strategy:          {args.sampling_strategy}")
     print("----------------------------------------------------------")
     
     main(args)

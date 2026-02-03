@@ -41,7 +41,7 @@ from marugoto_helpers.loss import mean_squared_error
 # from fastai.vision.all import * #same as avive
 
 from marugoto_helpers.data import make_whole_slide_dataset
-from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling, get_random_samples
+from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling, get_random_samples, get_random_clustered_samples
 from suRe_helpers.sure_model import get_suRe_emodel
 # from suRe_helpers.data import make_image_level_dataset
 from marugoto_helpers.model import MILModel
@@ -66,7 +66,7 @@ def train_marugoto(
     path: Optional[Path] = None,
     sample_bag_size: Optional[int] = None,
     sample_amount: int = 1,
-    sample_randomly:bool = False,
+    sampling_strategy: str  = "cluster_size",
     use_cluster_based_upsampling: bool = False,
     upsampling_bins: int = 10,
     alpha: float = 0.1,
@@ -167,7 +167,8 @@ def train_marugoto(
     #create samples with cluster-size weighted sampling        
     if sample_bag_size is not None:
         print("Creating clustered samples with fixed bag size: ", sample_bag_size)
-        if sample_randomly:
+        if sampling_strategy == "random":
+            print(f"using complete random sampling with {sample_amount} samples for bag creation")
             bags, targs, valid_idxs, sampled_indexes = get_random_samples(
                 bags=bags, 
                 targs=targs, 
@@ -175,7 +176,8 @@ def train_marugoto(
                 num_samples=sample_amount, 
                 prediction_level=prediction_level, 
                 valid_idxs=valid_idxs)
-        else:
+        elif sampling_strategy == "cluster_size":
+            print(f"using cluster-size weighted sampling with {sample_amount} samples for bag creation")
             bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
                 bags=bags, 
                 targs=targs, 
@@ -183,7 +185,16 @@ def train_marugoto(
                 num_samples=sample_amount, 
                 prediction_level=prediction_level, 
                 valid_idxs=valid_idxs)
-    
+        
+        elif sampling_strategy == "clustered_random": 
+            print(f"using clustered random sampling with {sample_amount} samples for training bags")
+            bags, targs, valid_idxs, sampled_indexes = get_random_clustered_samples(
+                bags=bags, 
+                targs=targs, 
+                bag_size=sample_bag_size, 
+                num_samples=sample_amount, 
+                prediction_level=prediction_level, 
+                valid_idxs=valid_idxs)
     
     # enable LDS-Smoothing  for continuous values, since high HRD_scores are rare
     weights = weighting_continuous_values(targs).reshape(-1,1)
@@ -325,7 +336,7 @@ def train_marugoto_crossval(
     n_epochs=25,
     sample_bag_size=None,
     sample_amount=1,
-    sample_randomly:bool = False,
+    sampling_strategy: str  = "cluster_size",
     use_cluster_based_upsampling:bool = False,
     upsampling_bins:int = 10,
     ) -> Learner:
@@ -359,7 +370,7 @@ def train_marugoto_crossval(
         n_epoch=n_epochs,
         sample_bag_size=sample_bag_size,
         sample_amount=sample_amount,
-        sample_randomly=sample_randomly,
+        sampling_strategy=sampling_strategy,
         use_cluster_based_upsampling= use_cluster_based_upsampling,
         upsampling_bins = upsampling_bins
     )
@@ -378,7 +389,7 @@ def deploy(
     cat_labels: Optional[Sequence[str]] = None, 
     cont_labels: Optional[Sequence[str]] = None,
     sample_bag_size: Optional[int] = None,
-    sample_randomly:bool = False,
+    sampling_strategy: str  = "cluster_size",
 ) -> pd.DataFrame:
     assert test_df.patient_id.nunique() == len(test_df), 'duplicate patients!'
 
@@ -418,21 +429,33 @@ def deploy(
 
     if sample_bag_size is not None:
         # only create one sample per bag for inference
-        if sample_randomly:
+        if sampling_strategy == "random":
+            print("using complete random sampling with for Test bag creation")
+
             bags, targs, _,  sampled_indexes = get_random_samples(
             bags=bags, 
             targs=targs, 
             bag_size=sample_bag_size, 
             num_samples=1, 
             prediction_level=prediction_level)
-        else:
+        elif sampling_strategy == "cluster_size":
+            print("using cluster-size weighted sampling for Test bag creation")
             bags, targs, _,  sampled_indexes = get_clustered_samples(
                 bags=bags, 
                 targs=targs, 
                 bag_size=sample_bag_size, 
                 num_samples=1, 
                 prediction_level=prediction_level)
-        
+            
+        elif sampling_strategy == "clustered_random":
+            print("using clustered random sampling for Test bag creation")
+            bags, targs, _,  sampled_indexes = get_random_clustered_samples(
+                bags=bags, 
+                targs=targs, 
+                bag_size=sample_bag_size, 
+                num_samples=1, 
+                prediction_level=prediction_level)
+
         test_ds = make_clustered_dataset(
             bags=bags,
             targets=(targs, np.ones(targs.shape).reshape(-1,1)), #(target_enc, )
@@ -452,6 +475,8 @@ def deploy(
     
     test_dl.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
     
+    batch = test_dl.one_batch()
+
 
     patient_preds, patient_targs = learn.get_preds(dl=test_dl)
     patient_targs = patient_targs[0]
