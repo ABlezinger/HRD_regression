@@ -5,15 +5,16 @@ from torch import nn
 import numpy as np
 
 
-__all__ = ['MILModel', 'Attention']
+__all__ = ['attMILModel', 'Attention']
 
 
-class MILModel(nn.Module):
+class attMILModel(nn.Module):
     def __init__(
         self, n_feats: int, n_out: int,
         encoder: Optional[nn.Module] = None,
         attention: Optional[nn.Module] = None,
         head: Optional[nn.Module] = None,
+        config: Optional[dict] = None
     ) -> None:
         """Create a new attention MIL model.
 
@@ -24,13 +25,25 @@ class MILModel(nn.Module):
         """
         super().__init__()
         self.encoder = encoder or nn.Sequential(
-            nn.Linear(n_feats, 256), nn.ReLU())
-        self.attention = attention or Attention(256)
-        self.head = head or nn.Sequential(
-            nn.Flatten(),
-            #nn.BatchNorm1d(256),
-            #nn.Dropout(),
-            nn.Linear(256, n_out))
+            nn.Linear(n_feats, config["encoding_dim"] if config else 256), nn.ReLU())
+        self.attention = attention or Attention(config["encoding_dim"] if config else 256)
+        if head is not None:
+            self.head = head
+        else:
+            # build head depending on config
+            layers = [nn.Flatten()]
+            input_dim = config["encoding_dim"] if config else 256
+            head_depth = config["head_depth"] if config and "head_depth" in config else 1
+            dropout = config.get("dropout", None) if config else None
+            for i in range(head_depth - 1):
+                output_dim = max(1, input_dim // 2)
+                layers.append(nn.Linear(input_dim, output_dim))
+                layers.append(nn.ReLU())
+                if dropout is not None and dropout > 0:
+                    layers.append(nn.Dropout(dropout))
+                input_dim = output_dim
+            layers.append(nn.Linear(input_dim, n_out))
+            self.head = nn.Sequential(*layers)
 
     #CHANGED
     def forward(self, args): #, weights
@@ -93,11 +106,19 @@ class MILModel(nn.Module):
         return torch.softmax(masked_attention, dim=1) # batch_size * bag_size * 1
 
 
-def Attention(n_in: int, n_latent: Optional[int] = None) -> nn.Module:
-    """A network calculating an embedding's importance weight."""
+def Attention(n_in: int, n_latent: Optional[int] = None, config: Optional[dict] = None) -> nn.Module:
+    """A network calculating an embedding's importance weight.
+    If config['attention_layers'] is set, builds a multi-layer attention network.
+    """
     n_latent = n_latent or (n_in + 1) // 2
-
-    return nn.Sequential(
-        nn.Linear(n_in, n_latent),
-        nn.Tanh(),
-        nn.Linear(n_latent, 1))
+    attention_depth = 1
+    if config and "attention_layers" in config:
+        attention_depth = max(1, int(config["attention_layers"]))
+    layers = []
+    input_dim = n_in
+    for i in range(attention_depth - 1):
+        layers.append(nn.Linear(input_dim, n_latent))
+        layers.append(nn.Tanh())
+        input_dim = n_latent
+    layers.append(nn.Linear(input_dim, 1))
+    return nn.Sequential(*layers)

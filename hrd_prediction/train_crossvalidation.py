@@ -7,33 +7,57 @@ import pandas as pd
 import numpy as np
 
 from mil_train import train_CAMIL_model_crossval
+from config_utils import get_MIL_config, get_training_config, get_setup_config
 
-def main(args):
+def start_crossvalidation(args, config: None):
+    """Function for training 
+
+    Args:
+        args (_type_): Argument list containing all necessary parameters for training the model. See argument parser for details.
+        config (None): Config with certain parameters. Only passed for HPO.
+    """
     np.random.seed(42)
+    MIL_model_config = get_MIL_config(args)
+    training_config = get_training_config(args)
+    setup_config = get_setup_config(args)
+    
+    if config is not None:
+        MIL_model_config.update(config)
+        training_config.update(config)
+        setup_config.update(config)
+    
+    print(setup_config)
+    
+    
+    
     patient_data = pd.read_excel(args.patient_data_file)
     patient_data = patient_data[patient_data["process_error"] != True]
     
     patient_data.reset_index(drop=True, inplace=True)
     
-    dataset, cohort = args.cohort.split("_")
+    project, cohort_name = setup_config["cohort"].split("_")
     
-    feature_path = f"{args.dataset_path}/{dataset}/{cohort}/features/{args.extraction_model}"
+    feature_path = f"{args.dataset_path}/{project}/{cohort_name}/features/{setup_config['extraction_model']}"
+    
     
     train_CAMIL_model_crossval(
-        MIL_model=args.MIL_model,
-        extraction_model=args.extraction_model,
+        setup_config=setup_config,
+        training_config=training_config,
+        MIL_model_config = MIL_model_config,
+        # MIL_model=args.MIL_model,
+        # extraction_model=args.extraction_model,
         patient_data=patient_data,
         feature_path=feature_path,
-        prediction_level=args.prediction_level,
-        cohort=args.cohort,
-        target_label=args.target_label,
-        epochs=args.epochs,
-        n_splits=args.n_splits,
-        sample_bag_size=args.sample_bag_size,
-        sample_amount=args.sample_amount,
-        sampling_strategy= args.sampling_strategy,
-        use_cluster_based_upsampling=args.use_cluster_based_upsampling,
-        upsampling_bins=args.upsampling_bins,
+        # prediction_level=args.prediction_level,
+        # cohort=args.cohort,
+        # target_label=args.target_label,
+        # epochs=args.epochs,
+        # n_splits=args.n_splits,
+        # bagsize=args.sample_bag_size,
+        # sample_amount=args.sample_amount,
+        # sampling_strategy= args.sampling_strategy,
+        # use_cluster_based_upsampling=args.use_cluster_based_upsampling,
+        # upsampling_bins=args.upsampling_bins,
         )
         
     print("DONE!")
@@ -61,6 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_cluster_based_upsampling", action="store_true", help="Usage of cluster-based Upsampling for rare HRD values. Multiple samples of the bag size are drawn from the same patient during training.")
     parser.add_argument("--upsampling_bins", type=int, default= 10, help="Amount of bins to use for the Upsampling.")
     parser.add_argument("--sampling_strategy", type=str, default="cluster_size", choices=["cluster_size", "random", "clustered_random"], help="Sampling strategy to use for bag creation during training.")
+    parser.add_argument("--test_mode", action="store_true", help="If set to True, the code will run in test mode with reduced dataset size and training epochs for quick testing.")
     
     
     # config = yaml.safe_load(open("hrd_prediction/train_config.yaml", "r"))
@@ -84,4 +109,4 @@ if __name__ == "__main__":
     print(f"sampling strategy:          {args.sampling_strategy}")
     print("----------------------------------------------------------")
     
-    main(args)
+    start_crossvalidation(args)

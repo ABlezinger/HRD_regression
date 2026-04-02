@@ -34,7 +34,7 @@ sampling_strategy="clustered_random" # Options: "clustered_random", "random", "c
 #     --target_label $target_label \
 #     --epochs $epochs \
 #     --prediction_level $prediciton_level \
-# python3 hrd_prediction/train_crossvalidation.py --MIL_type "marugoto" --extraction_model "CONCH" --cohort "CPTAC_PDA" --target_label "HRD_sum" --prediction_level "slide"
+# python3 hrd_prediction/train_crossvalidation.py --MIL_model "marugoto" --extraction_model "CONCH" --cohort "CPTAC_PDA" --target_label "HRD_sum" --prediction_level "patient" --sample_bag_size 600 --sample_amount 1
 
 ## CLUSTER_WEIGHTED SAMPLING MARUGOTO and SURE
 

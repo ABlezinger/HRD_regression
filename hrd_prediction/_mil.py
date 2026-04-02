@@ -44,7 +44,7 @@ from marugoto_helpers.data import make_whole_slide_dataset
 from suRe_helpers.data import get_clustered_samples, make_clustered_dataset, arrange_bags_for_upsamling, get_random_samples, get_random_clustered_samples
 from suRe_helpers.sure_model import get_suRe_emodel
 # from suRe_helpers.data import make_image_level_dataset
-from marugoto_helpers.model import MILModel
+from marugoto_helpers.model import attMILModel
 
 
 __all__ = ['train_marugoto', 'deploy']
@@ -55,23 +55,25 @@ T = TypeVar('T')
 #CHANGED
 def train_marugoto(
     *,
-    MIL_model: str,
+    setup_config: dict,
+    training_config: dict,
+    MIL_model_config: dict,
+    # MIL_model: str,
     bags: Sequence[Iterable[Path]],
     targets: np.ndarray,
-    add_features: Iterable[Tuple[FunctionTransformer, Sequence[Any]]] = [],
+    # add_features: Iterable[Tuple[FunctionTransformer, Sequence[Any]]] = [],
     valid_idxs: np.ndarray,
-    prediction_level: str,
-    n_epoch: int = 25, #32
-    patience: int = 8,
+    # prediction_level: str,
+    # n_epoch: int = 25, #32
+    # patience: int = 8,
     path: Optional[Path] = None,
-    sample_bag_size: Optional[int] = None,
-    sample_amount: int = 1,
-    sampling_strategy: str  = "cluster_size",
-    use_cluster_based_upsampling: bool = False,
-    upsampling_bins: int = 10,
-    alpha: float = 0.1,
-    beta: float = 0.2,
-    
+    # sample_bag_size: Optional[int] = None,
+    # sample_amount: int = 1,
+    # sampling_strategy: str  = "cluster_size",
+    # use_cluster_based_upsampling: bool = False,
+    # upsampling_bins: int = 10,
+    # alpha: float = 0.1,
+    # beta: float = 0.2,
     no_save: bool = False,
 ) -> Learner:
     """Train a MLP on image features.
@@ -137,7 +139,7 @@ def train_marugoto(
     ### arrange Data according the configuration 
 
     # for slide level predicitons each bag contains only features from one file; targets and indexes have to be appended multiple times
-    if prediction_level == "slide":
+    if setup_config["prediction_level"] == "slide":
         new_bags = []
         targs = []
         idx = []
@@ -152,48 +154,48 @@ def train_marugoto(
         valid_idxs = np.array(idx)
 
     # for patient predictions each bag contains features from mutliple slides
-    elif(prediction_level == "patient"):    
+    elif(setup_config["prediction_level"] == "patient"):    
         targs = targets
 
-    if use_cluster_based_upsampling:
-        b, t, v = arrange_bags_for_upsamling(bags=bags, targs=targs, valid_idxs=valid_idxs, n_bins=upsampling_bins, alpha=alpha, beta=beta)
+    if setup_config["use_cluster_based_upsampling"]:
+        b, t, v = arrange_bags_for_upsamling(bags=bags, targs=targs, valid_idxs=valid_idxs, n_bins=setup_config["upsampling_bins"], alpha=setup_config["upsampling_alpha"], beta=setup_config["upsampling_beta"])
         bags = np.concatenate([bags, b])
         targs = np.concatenate([targs, t])
         valid_idxs = np.concatenate([valid_idxs, v])
         
-        print(f"Bin distribution of upsampled eintities: {np.histogram(targs, bins=upsampling_bins, density=False)[0]}")
+        print(f"Bin distribution of upsampled eintities: {np.histogram(targs, bins=setup_config['upsampling_bins'], density=False)[0]}")
 
         
     #create samples with cluster-size weighted sampling        
-    if sample_bag_size is not None:
-        print("Creating clustered samples with fixed bag size: ", sample_bag_size)
-        if sampling_strategy == "random":
-            print(f"using complete random sampling with {sample_amount} samples for bag creation")
+    if setup_config["bag_size"] is not None:
+        print("Creating clustered samples with fixed bag size: ", setup_config["bag_size"])
+        if setup_config["sampling_strategy"] == "random":
+            print(f"using complete random sampling with {setup_config['sample_amount']} samples for bag creation")
             bags, targs, valid_idxs, sampled_indexes = get_random_samples(
                 bags=bags, 
                 targs=targs, 
-                bag_size=sample_bag_size, 
-                num_samples=sample_amount, 
-                prediction_level=prediction_level, 
+                bag_size=setup_config["bag_size"], 
+                num_samples=setup_config["sample_amount"], 
+                prediction_level=setup_config["prediction_level"], 
                 valid_idxs=valid_idxs)
-        elif sampling_strategy == "cluster_size":
-            print(f"using cluster-size weighted sampling with {sample_amount} samples for bag creation")
+        elif setup_config["sampling_strategy"] == "cluster_size":
+            print(f"using cluster-size weighted sampling with {setup_config['sample_amount']} samples for bag creation")
             bags, targs, valid_idxs, sampled_indexes = get_clustered_samples(
                 bags=bags, 
                 targs=targs, 
-                bag_size=sample_bag_size, 
-                num_samples=sample_amount, 
-                prediction_level=prediction_level, 
+                bag_size=setup_config["bag_size"], 
+                num_samples=setup_config["sample_amount"], 
+                prediction_level=setup_config["prediction_level"], 
                 valid_idxs=valid_idxs)
         
-        elif sampling_strategy == "clustered_random": 
-            print(f"using clustered random sampling with {sample_amount} samples for training bags")
+        elif setup_config["sampling_strategy"] == "clustered_random": 
+            print(f"using clustered random sampling with {setup_config['sample_amount']} samples for training bags")
             bags, targs, valid_idxs, sampled_indexes = get_random_clustered_samples(
                 bags=bags, 
                 targs=targs, 
-                bag_size=sample_bag_size, 
-                num_samples=sample_amount, 
-                prediction_level=prediction_level, 
+                bag_size=setup_config["bag_size"], 
+                num_samples=setup_config["sample_amount"], 
+                prediction_level=setup_config["prediction_level"], 
                 valid_idxs=valid_idxs)
     
     # enable LDS-Smoothing  for continuous values, since high HRD_scores are rare
@@ -202,37 +204,37 @@ def train_marugoto(
 
 
     
-    if sample_bag_size is not None:
+    if setup_config["bag_size"] is not None:
         #create dataset with cluster-size weighted sampled bags
         train_ds = make_clustered_dataset(
             bags=bags[~valid_idxs],
             targets= (targs[~valid_idxs], weights[~valid_idxs]),
             sampled_idxs=sampled_indexes[~valid_idxs],
-            bag_size=sample_bag_size)
+            bag_size=setup_config["bag_size"])
         
         valid_ds = make_clustered_dataset(
             bags=bags[valid_idxs],
             targets= (targs[valid_idxs], weights[valid_idxs]),
             sampled_idxs=sampled_indexes[valid_idxs],
-            bag_size=sample_bag_size)
+            bag_size=setup_config["bag_size"])
 
     else:
         train_ds = make_whole_slide_dataset(
             bags=bags[~valid_idxs],
             targets= (targs[~valid_idxs], weights[~valid_idxs]),
-            add_features=[
-                (enc, vals[~valid_idxs])
-                for enc, vals in add_features],
-            bag_size=None) #512 # NONE = use all features of the bag
+            # add_features=[
+            #     (enc, vals[~valid_idxs])
+            #     for enc, vals in add_features],
+            bag_size=None) 
 
 
         #CHANGED
         valid_ds = make_whole_slide_dataset(
             bags=bags[valid_idxs],
             targets=(targs[valid_idxs], weights[valid_idxs]),
-            add_features=[
-                (enc, vals[valid_idxs])
-                for enc, vals in add_features],
+            # add_features=[
+            #     (enc, vals[valid_idxs])
+            #     for enc, vals in add_features],
             bag_size=None) #None
 
 
@@ -252,34 +254,8 @@ def train_marugoto(
     # print(f"BATCH {batch[0]}")
 
 
-    #added extra [0] because of the new tuple structure
-    if MIL_model == "marugoto":
-        model = MILModel(batch[0][0].shape[-1], 1) #batch[-1].shape[-1]
-    elif MIL_model == "random_attn_topk":
-        model = get_suRe_emodel("random_attn_topk", batch[0][0].shape[-1], 1)
-    elif MIL_model == "random_4_quantile":
-        model = get_suRe_emodel("random_4_quantile", batch[0][0].shape[-1], 1)
-        
+    model = create_MIL_model(MIL_model_config, batch)
 
-    # print(model)
-    # MILModel(
-    # (encoder): Sequential(
-    #     (0): Linear(in_features=2048, out_features=256, bias=True)
-    #     (1): ReLU()
-    # )
-    # (attention): Sequential(
-    #     (0): Linear(in_features=256, out_features=128, bias=True)
-    #     (1): Tanh()
-    #     (2): Linear(in_features=128, out_features=1, bias=True)
-    # )
-    # (head): Sequential(
-    #     (0): Flatten(start_dim=1, end_dim=-1)
-    #     (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-    #     (2): Dropout(p=0.5, inplace=False)
-    #     (3): Linear(in_features=256, out_features=1, bias=True)
-    # )
-    # )
-    
     #for imbalanced regression
     loss_func = WeightedMSELoss()
 
@@ -294,51 +270,53 @@ def train_marugoto(
         dls,
         model,
         loss_func=loss_func,
-        lr=.0001, 
+        lr=training_config['learning_rate'], 
         wd=0.01,
         metrics=[mean_squared_error],
         path=path,
         )
     
-    print("DEVICE: ", str(learn.dls.device))
-    print("CUDA: ", torch.cuda.is_available())
+    # print("DEVICE: ", str(learn.dls.device))
+    # print("CUDA: ", torch.cuda.is_available())
 
-    if not no_save: 
-        cbs = [
-            SaveModelCallback(fname=f'best_valid'),
-            #EarlyStoppingCallback(monitor='roc_auc_score',
-            #                      min_delta=0.01, patience=patience),
-            #GradientAccumulation(n_acc=64),
-            #TensorBoardCallback(),
-            CSVLogger()]
-        
-    else:
-        cbs = []
+
+    cbs = [
+        SaveModelCallback(fname=f'best_valid'),
+        #EarlyStoppingCallback(monitor='roc_auc_score',
+        #                      min_delta=0.01, patience=patience),
+        #GradientAccumulation(n_acc=64),
+        #TensorBoardCallback(),
+    ]
+    if not setup_config["test_mode"] and not no_save:
+        cbs.append(CSVLogger())
         
     print("Starting training...")
     with learn.no_bar():
-        learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
-    # learn.fit_one_cycle(n_epoch=n_epoch, lr_max=1e-4, cbs=cbs, )
+        learn.fit_one_cycle(n_epoch=training_config["epochs"], lr_max=1e-4, cbs=cbs, )
+    # learn.fit_one_cycle(n_epoch=training_config["epochs"], lr_max=1e-4, cbs=cbs, )
     
     del dls
     return learn
 
 def train_marugoto_crossval(
     *, 
-    MIL_model: str,
+    setup_config: dict,
+    training_config: dict,
+    MIL_model_config: dict,
+    # MIL_model: str,
     fold_path,
     fold_df, 
-    target_label,
-    cat_labels,
-    cont_labels,
-    binary_label, #target_enc,fold_weights_train 
-    prediction_level,
-    n_epochs=25,
-    sample_bag_size=None,
-    sample_amount=1,
-    sampling_strategy: str  = "cluster_size",
-    use_cluster_based_upsampling:bool = False,
-    upsampling_bins:int = 10,
+    # target_label,
+    # cat_labels,
+    # cont_labels,
+    # binary_label, #target_enc,fold_weights_train 
+    # prediction_level,
+    # n_epochs=25,
+    # sample_bag_size=None,
+    # sample_amount=1,
+    # sampling_strategy: str  = "cluster_size",
+    # use_cluster_based_upsampling:bool = False,
+    # upsampling_bins:int = 10,
     ) -> Learner:
 
     """Helper function for training the folds."""
@@ -346,9 +324,9 @@ def train_marugoto_crossval(
     fold_path.mkdir(exist_ok=True, parents=True)
 
 
-    if binary_label is not None:
+    if setup_config["binary_label"] is not None:
         train_patients, valid_patients = train_test_split(
-            fold_df.patient_id, stratify=fold_df[binary_label], random_state=1337) # 1337
+            fold_df.patient_id, stratify=fold_df[setup_config["binary_label"]], random_state=1337) # 1337
     else:
         train_patients, valid_patients = train_test_split(
             fold_df.patient_id, random_state=1337) # 1337
@@ -360,23 +338,26 @@ def train_marugoto_crossval(
 
 
     learn = train_marugoto(
-        MIL_model=MIL_model,
+        setup_config=setup_config,
+        training_config=training_config,
+        MIL_model_config=MIL_model_config,
+        # MIL_model=MIL_model,
         bags=fold_df.feature_files.values,
-        targets=(fold_df[target_label].values).reshape(-1,1),
+        targets=(fold_df[setup_config["target_label"]].values).reshape(-1,1),
         # add_features=add_features,
         valid_idxs=fold_df.patient_id.isin(valid_patients).values,
         path=fold_path,
-        prediction_level=prediction_level,
-        n_epoch=n_epochs,
-        sample_bag_size=sample_bag_size,
-        sample_amount=sample_amount,
-        sampling_strategy=sampling_strategy,
-        use_cluster_based_upsampling= use_cluster_based_upsampling,
-        upsampling_bins = upsampling_bins
+        # prediction_level=prediction_level,
+        # n_epoch=n_epochs,
+        # sample_bag_size=sample_bag_size,
+        # sample_amount=sample_amount,
+        # sampling_strategy=sampling_strategy,
+        # use_cluster_based_upsampling= use_cluster_based_upsampling,
+        # upsampling_bins = upsampling_bins
     )
     
-    learn.target_label = target_label
-    learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
+    learn.target_label = setup_config["target_label"]
+    # learn.cat_labels, learn.cont_labels = cat_labels, cont_labels
 
     return learn
 
@@ -384,33 +365,34 @@ def deploy(
     test_df: pd.DataFrame, 
     learn: Learner,
     *,
-    prediction_level: str,
-    target_label: Optional[str] = None,
-    cat_labels: Optional[Sequence[str]] = None, 
-    cont_labels: Optional[Sequence[str]] = None,
-    sample_bag_size: Optional[int] = None,
-    sampling_strategy: str  = "cluster_size",
+    setup_config: dict,
+    # prediction_level: str,
+    # target_label: Optional[str] = None,
+    # cat_labels: Optional[Sequence[str]] = None, 
+    # cont_labels: Optional[Sequence[str]] = None,
+    # sample_bag_size: Optional[int] = None,
+    # sampling_strategy: str  = "cluster_size",
 ) -> pd.DataFrame:
     assert test_df.patient_id.nunique() == len(test_df), 'duplicate patients!'
 
 
-    if target_label is None: target_label = learn.target_label
-    if cat_labels is None: cat_labels = learn.cat_labels
-    if cont_labels is None: cont_labels = learn.cont_labels
+    if setup_config["target_label"] is None: setup_config["target_label"] = learn.target_label
+    # if setup_config["cat_labels"] is None: cat_labels = learn.cat_labels
+    # if setup_config["cont_labels"] is None: cont_labels = learn.cont_labels
 
     #CHANGED
     add_features = []
-    if cat_labels:
-        cat_enc = learn.dls.dataset._datasets[-2]._datasets[0].encode
-        add_features.append((cat_enc, test_df[cat_labels].values))
-    if cont_labels:
-        cont_enc = learn.dls.dataset._datasets[-2]._datasets[1].encode
-        add_features.append((cont_enc, test_df[cont_labels].values))
+    # if cat_labels:
+    #     cat_enc = learn.dls.dataset._datasets[-2]._datasets[0].encode
+    #     add_features.append((cat_enc, test_df[cat_labels].values))
+    # if cont_labels:
+    #     cont_enc = learn.dls.dataset._datasets[-2]._datasets[1].encode
+    #     add_features.append((cont_enc, test_df[cont_labels].values))
         
-    if prediction_level == "slide":
+    if setup_config["prediction_level"] == "slide":
         patient_ids = []
         bags = test_df.feature_files.values
-        targets = test_df[target_label].values
+        targets = test_df[setup_config["target_label"]].values
         new_bags = []
         targs = []
         for i, bag_paths in enumerate(bags):
@@ -421,46 +403,46 @@ def deploy(
         bags = np.array(new_bags)
         targs = np.array(targs)
         print(f"Number of test slides: {len(bags)}")
-    elif prediction_level == "patient":
+    elif setup_config["prediction_level"] == "patient":
         patient_ids = test_df.patient_id.values
-        targs = test_df[target_label].values
+        targs = test_df[setup_config["target_label"]].values
         bags = test_df.feature_files.values
         
 
-    if sample_bag_size is not None:
+    if setup_config["bag_size"] is not None:
         # only create one sample per bag for inference
-        if sampling_strategy == "random":
+        if setup_config["sampling_strategy"] == "random":
             print("using complete random sampling with for Test bag creation")
 
             bags, targs, _,  sampled_indexes = get_random_samples(
             bags=bags, 
             targs=targs, 
-            bag_size=sample_bag_size, 
+            bag_size=setup_config["bag_size"], 
             num_samples=1, 
-            prediction_level=prediction_level)
-        elif sampling_strategy == "cluster_size":
+            prediction_level=setup_config["prediction_level"])
+        elif setup_config["sampling_strategy"] == "cluster_size":
             print("using cluster-size weighted sampling for Test bag creation")
             bags, targs, _,  sampled_indexes = get_clustered_samples(
                 bags=bags, 
                 targs=targs, 
-                bag_size=sample_bag_size, 
+                bag_size=setup_config["bag_size"], 
                 num_samples=1, 
-                prediction_level=prediction_level)
+                prediction_level=setup_config["prediction_level"])
             
-        elif sampling_strategy == "clustered_random":
+        elif setup_config["sampling_strategy"] == "clustered_random":
             print("using clustered random sampling for Test bag creation")
             bags, targs, _,  sampled_indexes = get_random_clustered_samples(
                 bags=bags, 
                 targs=targs, 
-                bag_size=sample_bag_size, 
+                bag_size=setup_config["bag_size"], 
                 num_samples=1, 
-                prediction_level=prediction_level)
+                prediction_level=setup_config["prediction_level"])
 
         test_ds = make_clustered_dataset(
             bags=bags,
             targets=(targs, np.ones(targs.shape).reshape(-1,1)), #(target_enc, )
             sampled_idxs=sampled_indexes,
-            bag_size=sample_bag_size)
+            bag_size=setup_config["bag_size"])
     
     else:
         test_ds = make_whole_slide_dataset(
@@ -485,7 +467,7 @@ def deploy(
     #CHANGED
     patient_preds_df = pd.DataFrame.from_dict({
         'patient_id': patient_ids,
-        target_label: targs})
+        setup_config["target_label"]: targs})
 
     patient_preds_df['loss'] = F.mse_loss(
         patient_preds.clone().detach().squeeze(), patient_targs.clone().detach().squeeze(),
@@ -495,9 +477,48 @@ def deploy(
 
     patient_preds_df = patient_preds_df[[
         'patient_id',
-        target_label,
+        setup_config["target_label"],
         'pred',
         'loss']]
     del test_dl
 
     return patient_preds_df
+
+
+def create_MIL_model(MIL_model_config, batch):
+    #added extra [0] because of the new tuple structure
+    if MIL_model_config["MIL_model"] == "marugoto":
+        model = attMILModel(batch[0][0].shape[-1], 1, config=MIL_model_config) #batch[-1].shape[-1]
+        
+            # print(model)
+    # MILModel(
+    # (encoder): Sequential(
+    #     (0): Linear(in_features=2048, out_features=256, bias=True)
+    #     (1): ReLU()
+    # )
+    # (attention): Sequential(
+    #     (0): Linear(in_features=256, out_features=128, bias=True)
+    #     (1): Tanh()
+    #     (2): Linear(in_features=128, out_features=1, bias=True)
+    # )
+    # (head): Sequential(
+    #     (0): Flatten(start_dim=1, end_dim=-1)
+    #     (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    #     (2): Dropout(p=0.5, inplace=False)
+    #     (3): Linear(in_features=256, out_features=1, bias=True)
+    # )
+    # )
+    
+    
+    elif MIL_model_config["MIL_model"] == "random_attn_topk":
+        model = get_suRe_emodel("random_attn_topk", batch[0][0].shape[-1], 1, MIL_model_config)
+        
+        
+    # elif MIL_model_config["MIL_model"] == "random_4_quantile":
+    #     model = get_suRe_emodel("random_4_quantile", batch[0][0].shape[-1], 1)
+    
+    else:
+        raise ValueError(f"Unknown MIL model: {MIL_model_config['MIL_model']}")
+    
+    
+    return model

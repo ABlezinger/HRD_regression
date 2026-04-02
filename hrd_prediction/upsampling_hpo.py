@@ -29,7 +29,7 @@ def train_cycle(trial):
         cohort=args.cohort,
         target_label=args.target_label,
         epochs=args.epochs,
-        sample_bag_size=args.sample_bag_size,
+        bagsize=args.sample_bag_size,
         sample_amount=args.sample_amount,
         use_cluster_based_upsampling=args.use_cluster_based_upsampling,
         upsampling_bins=upsampling_bins,

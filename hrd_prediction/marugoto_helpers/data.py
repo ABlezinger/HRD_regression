@@ -186,7 +186,7 @@ def get_patient_df(
     df = patient_df.groupby('patient_id').first().drop(columns='feature_file')
     
     # patient_slides = df.groupby('PATIENT').slide_path.apply(list)
-    patient_features = patient_df.groupby('patient_id').feature_file.apply(list)
+    patient_features = patient_df.groupby('patient_id', group_keys=False).feature_file.apply(list)
     
     df = df.merge(patient_features, left_on='patient_id', right_index=True).reset_index()
     df = df.rename(columns={"feature_file": "feature_files"})

@@ -26,7 +26,7 @@ def main(args):
         target_label=args.target_label,
         epochs=args.epochs,
         n_splits=args.n_splits,
-        sample_bag_size=args.sample_bag_size,
+        bagsize=args.sample_bag_size,
         sample_amount=args.sample_amount,
         )
         
